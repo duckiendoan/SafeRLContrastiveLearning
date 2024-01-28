@@ -15,7 +15,7 @@ from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 from lnt import SafetyWrapper
 from QLearningAgent import QLearningAgent
-from utils import ImgObsWrapper
+from utils import TransposeImageWrapper
 
 @dataclass
 class Args:
@@ -90,8 +90,9 @@ def make_env(env_id, idx, capture_video, run_name, args=None, writer=None, devic
             env = gym.make(env_id)
         if "MiniGrid" in env_id:
             env = minigrid.wrappers.RGBImgObsWrapper(env)
-            env = ImgObsWrapper(env)
+            env = minigrid.wrappers.ImgObsWrapper(env)
             env = gym.wrappers.ResizeObservation(env, (84, 84))
+            env = TransposeImageWrapper(env)
             q_learning_agent = QLearningAgent(env, writer, device)
             def reset_reward_fn(obs, action):
                 pass
