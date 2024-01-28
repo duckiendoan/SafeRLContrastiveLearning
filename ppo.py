@@ -81,6 +81,8 @@ class Args:
     """the number of iterations (computed in runtime)"""
     min_q: float = -0.2
     """the min q value used in LeaveNoTrace"""
+    reseed: bool = False
+    """whether to regenerate the environment with the same seed"""
 
 def make_env(env_id, idx, capture_video, run_name, args=None, writer=None, device=None):
     def thunk():
@@ -89,6 +91,8 @@ def make_env(env_id, idx, capture_video, run_name, args=None, writer=None, devic
             env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         else:
             env = gym.make(env_id)
+        if args.reseed:
+            env = minigrid.wrappers.ReseedWrapper(env)
         if "MiniGrid" in env_id:
             env = minigrid.wrappers.RGBImgObsWrapper(env)
             env = minigrid.wrappers.ImgObsWrapper(env)
