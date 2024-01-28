@@ -39,7 +39,7 @@ class SafetyWrapper(Wrapper):
             # For Minigrid
             reset_done = np.array_equal(self.env.unwrapped.agent_pos, np.array([1, 1]))
             reset_reward = float(reset_done) - 1.0
-            self.writer.add_scalar("charts/reset_reward", reset_reward, self.global_step)
+            self.writer.add_scalar("charts/reset_reward", reset_reward, self._reset_agent.global_step)
             self._reset_agent.rb.add(obs[np.newaxis], next_obs[np.newaxis], reset_action, reset_reward, reset_done, info)
             obs = next_obs
             self._reset_agent.train()
@@ -50,9 +50,9 @@ class SafetyWrapper(Wrapper):
 
         # Fail to reset after time limit
         if not reset_done:
-            print("Failed to reset. Falling back to manual reset...")
             obs, info = self.env.reset(seed=seed, options=options)
             self._total_resets += 1
+            print(f"Failed to reset. Falling back to manual reset... Total reset={self._total_resets}")
         # Log metrics
         self._reset_history.append(self._total_resets)
         self._reward_history.append(np.mean(self._episode_rewards))
