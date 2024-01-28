@@ -14,7 +14,7 @@ class SafetyWrapper(Wrapper):
         self._reset_done_fn = reset_done_fn
         self._q_min = q_min
         # Get max_steps for Minigrid environments
-        self._max_steps = env.get_wrapper_attr("max_steps") / 2
+        self._max_steps = env.get_wrapper_attr("max_steps") // 2
         self.obs, _ = env.reset()
 
         # Setup internal structures for logging metrics.
