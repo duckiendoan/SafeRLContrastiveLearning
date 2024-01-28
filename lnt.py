@@ -72,7 +72,7 @@ class SafetyWrapper(Wrapper):
         reset_q = self._reset_agent.get_q(self.obs, action)
         # If the action is unsafe, run the reset policy
         if reset_q < self._q_min:
-            obs, reward, terminated, truncated, info = self._reset()
+            obs, reward, terminated, truncated, info = self._reset(seed=None, options=None)
         else:
             obs, reward, terminated, truncated, info = self.env.step(action)
             self._episode_rewards.append(reward)
