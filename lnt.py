@@ -1,4 +1,5 @@
 # Adapted from https://github.com/brain-research/LeaveNoTrace/blob/master/lnt.py
+from typing import Any
 
 import gymnasium as gym
 from gymnasium import Wrapper
@@ -22,7 +23,7 @@ class SafetyWrapper(Wrapper):
         self._reset_history = []
         self._reward_history = []
 
-    def _reset(self):
+    def _reset(self, seed, options):
         """
         Run the reset policy
         :return: obs, reward, terminated, truncated, info
@@ -45,7 +46,7 @@ class SafetyWrapper(Wrapper):
 
         # Fail to reset after time limit
         if not reset_done:
-            obs = self.env.reset()
+            obs, info = self.env.reset(seed=seed, options=options)
             self._total_resets += 1
         # Log metrics
         self._reset_history.append(self._total_resets)
@@ -62,9 +63,9 @@ class SafetyWrapper(Wrapper):
         self.env._elapsed_steps = 0
         return obs, reward, done, False, info
 
-    def reset(self):
-        obs, reward, terminated, truncated, info = self._reset()
-        return obs
+    def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
+        obs, reward, terminated, truncated, info = self._reset(seed, options)
+        return obs, info
 
     def step(self, action):
         # Calculate the Q value when in current state and taking an action
