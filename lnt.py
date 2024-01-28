@@ -38,7 +38,7 @@ class SafetyWrapper(Wrapper):
             # For Minigrid
             reset_done = np.array_equal(self.env.unwrapped.agent_pos, np.array([1, 1]))
             reset_reward = float(reset_done) - 1.0
-            self._reset_agent.rb.add(obs, next_obs, reset_action, reset_reward, reset_done, info)
+            self._reset_agent.rb.add(obs[np.newaxis], next_obs[np.newaxis], reset_action, reset_reward, reset_done, info)
             obs = next_obs
             self._reset_agent.train()
             if reset_done:

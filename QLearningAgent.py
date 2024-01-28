@@ -111,15 +111,15 @@ class QLearningAgent:
         args = self.args
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps, self.global_step)
         if random.random() < epsilon:
-            actions = np.array([self.env.single_action_space.sample() for _ in range(self.env.num_envs)])
+            actions = np.array(self.env.action_space.sample())
         else:
-            q_values = self.q_network(torch.Tensor(obs).to(self.device))
+            q_values = self.q_network(torch.Tensor(obs).unsqueeze(0).to(self.device))
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
         return actions
 
     def get_q(self, obs, action):
         with torch.no_grad():
-            q_values = self.q_network(torch.Tensor(obs).to(self.device))
+            q_values = self.q_network(torch.Tensor(obs).unsqueeze(0).to(self.device))
             return torch.squeeze(q_values[:, action].cpu()).item()
 
     def train(self):
