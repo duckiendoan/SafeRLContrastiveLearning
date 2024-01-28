@@ -34,6 +34,7 @@ class SafetyWrapper(Wrapper):
             next_obs, reward, terminated, truncated, info = self.env.step(action=reset_action)
             # reset_reward = self._reset_reward_fn(next_obs, reset_action)
             # reset_done = self._reset_done_fn(next_obs)
+            # For Minigrid
             reset_done = np.array_equal(self.env.unwrapped.agent_pos, np.array([1, 1]))
             reset_reward = float(reset_done) - 1.0
             self._reset_agent.rb.add(obs, next_obs, reset_action, reset_reward, reset_done, info)

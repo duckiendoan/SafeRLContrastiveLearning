@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 
 import gymnasium as gym
+import minigrid.wrappers
 import numpy as np
 import torch
 import torch.nn as nn
@@ -14,6 +15,7 @@ from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 from lnt import SafetyWrapper
 from QLearningAgent import QLearningAgent
+from utils import ImgObsWrapper
 
 @dataclass
 class Args:
@@ -84,15 +86,18 @@ def make_env(env_id, idx, capture_video, run_name, args=None, writer=None, devic
         if capture_video and idx == 0:
             env = gym.make(env_id, render_mode="rgb_array")
             env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-            q_learning_agent = QLearningAgent(env, args, writer, device)
+        else:
+            env = gym.make(env_id)
+        if "MiniGrid" in env_id:
+            env = minigrid.wrappers.RGBImgObsWrapper(env)
+            env = ImgObsWrapper(env)
+            env = gym.wrappers.ResizeObservation(env, (84, 84))
+            q_learning_agent = QLearningAgent(env, writer, device)
             def reset_reward_fn(obs, action):
                 pass
             def reset_done_fn(obs):
                 pass
-
             env = SafetyWrapper(env, q_learning_agent, reset_reward_fn, reset_done_fn, 0.1)
-        else:
-            env = gym.make(env_id)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -108,30 +113,30 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
-        self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
+        self.network = nn.Sequential(
+            layer_init(nn.Conv2d(3, 32, 8, stride=4)),
+            nn.ReLU(),
+            layer_init(nn.Conv2d(32, 64, 4, stride=2)),
+            nn.ReLU(),
+            layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+            nn.ReLU(),
+            nn.Flatten(),
+            layer_init(nn.Linear(64 * 7 * 7, 512)),
+            nn.ReLU(),
         )
-        self.actor = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
-        )
+        self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
+        self.critic = layer_init(nn.Linear(512, 1), std=1)
 
     def get_value(self, x):
-        return self.critic(x)
+        return self.critic(self.network(x / 255.0))
 
     def get_action_and_value(self, x, action=None):
-        logits = self.actor(x)
+        hidden = self.network(x / 255.0)
+        logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
+        return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
 
 
 if __name__ == "__main__":
