@@ -79,7 +79,8 @@ class Args:
     """the mini-batch size (computed in runtime)"""
     num_iterations: int = 0
     """the number of iterations (computed in runtime)"""
-
+    min_q: float = -0.2
+    """the min q value used in LeaveNoTrace"""
 
 def make_env(env_id, idx, capture_video, run_name, args=None, writer=None, device=None):
     def thunk():
@@ -98,7 +99,7 @@ def make_env(env_id, idx, capture_video, run_name, args=None, writer=None, devic
                 pass
             def reset_done_fn(obs):
                 pass
-            env = SafetyWrapper(env, q_learning_agent, reset_reward_fn, reset_done_fn, 0.1)
+            env = SafetyWrapper(env, q_learning_agent, reset_reward_fn, reset_done_fn, args.min_q)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
