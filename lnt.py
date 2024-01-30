@@ -1,7 +1,5 @@
 # Adapted from https://github.com/brain-research/LeaveNoTrace/blob/master/lnt.py
 from typing import Any
-
-import gymnasium as gym
 from gymnasium import Wrapper
 import numpy as np
 
@@ -15,7 +13,7 @@ class SafetyWrapper(Wrapper):
         self._q_min = q_min
         self.writer = reset_agent.writer
         # Get max_steps for MiniGrid environments
-        self._max_steps = env.get_wrapper_attr("max_steps") // 2
+        self._max_steps = env.get_wrapper_attr("max_steps")
         self.obs, _ = env.reset()
 
         # Setup internal structures for logging metrics.
@@ -34,17 +32,17 @@ class SafetyWrapper(Wrapper):
             self._reset_agent.global_step += 1
             reset_action = self._reset_agent.choose_action(obs)
             next_obs, reward, terminated, truncated, info = self.env.step(action=reset_action)
-            # reset_reward = self._reset_reward_fn(next_obs, reset_action)
-            # reset_done = self._reset_done_fn(next_obs)
-            # For Minigrid
-            reset_done = np.array_equal(self.env.unwrapped.agent_pos, np.array([1, 1]))
-            reset_reward = float(reset_done) - 1.0
+            # For MiniGrid
+            reset_reward = self._reset_reward_fn(self.env, next_obs, reset_action)
+            reset_done = self._reset_done_fn(self.env, next_obs)
+
             self.writer.add_scalar("charts/reset_reward", reset_reward, self._reset_agent.global_step)
             self._reset_agent.rb.add(obs[np.newaxis], next_obs[np.newaxis], reset_action, reset_reward, reset_done, info)
             obs = next_obs
             self._reset_agent.train()
             if reset_done:
                 print("Reset successfully!")
+                # Real reset
                 self.env.reset(seed=seed, options=options)
                 break
 
