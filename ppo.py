@@ -16,9 +16,12 @@ from torch.utils.tensorboard import SummaryWriter
 from lnt import SafetyWrapper
 from QLearningAgent import QLearningAgent
 from utils import TransposeImageWrapper
+from QLearningAgent import Args as QLearningArgs
 
 @dataclass
 class Args:
+    qlearning: QLearningArgs
+    """Q-learning configuration"""
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     """the name of this experiment"""
     seed: int = 1
@@ -101,7 +104,7 @@ def make_env(env_id, idx, capture_video, run_name, args=None, writer=None, devic
             if args.reseed:
                 env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
             # Safety Wrapper
-            q_learning_agent = QLearningAgent(env, writer, device)
+            q_learning_agent = QLearningAgent(env, args.qlearning, writer, device)
             def reset_reward_fn(env, obs, action):
                 return float(reset_done_fn(env, obs))
             def reset_done_fn(env, obs):

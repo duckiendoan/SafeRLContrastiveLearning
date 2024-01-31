@@ -92,8 +92,7 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
 
 
 class QLearningAgent:
-    def __init__(self, env, writer, device=None):
-        args = Args()
+    def __init__(self, env, args, writer, device=None):
         self.args = args
         self.env = env
         self.device = device if device is not None \
