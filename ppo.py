@@ -100,7 +100,7 @@ def make_env(env_id, idx, capture_video, run_name, args=None, writer=None, devic
             env = minigrid.wrappers.ImgObsWrapper(env)
             env = gym.wrappers.ResizeObservation(env, (84, 84))
             env = TransposeImageWrapper(env)
-            env = DeathLogWrapper(env)
+            # env = DeathLogWrapper(env)
             if args.reseed:
                 env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
             # Safety Wrapper
