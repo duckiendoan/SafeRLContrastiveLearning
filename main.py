@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import minigrid
 from gymnasium.core import WrapperObsType
-
+from PIL import Image
 
 class TestWrapper(gym.Wrapper):
     def __init__(self, env):
@@ -41,8 +41,13 @@ if __name__ == '__main__':
         [make_env for i in range(1)],
     )
     obs, info = envs.reset()
+
     print(obs.shape)
     print(envs.single_observation_space.shape)
+
+    im = Image.fromarray(envs.get_attr("render")[0])
+    im.save("runs/images/1.jpg")
+
     # plt.imshow(obs[0, :, :, :])
     # plt.show()
     for i in range(10):
