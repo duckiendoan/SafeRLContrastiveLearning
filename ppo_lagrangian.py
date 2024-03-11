@@ -278,7 +278,7 @@ if __name__ == "__main__":
             cost_returns = cost_advantages + cvalues
             # Calculate average cost
             episode_costs = []
-            accumulated_cost = torch.zeros((args.num_envs,))
+            accumulated_cost = torch.zeros((args.num_envs,)).to(device)
             for t in range(args.num_steps):
                 accumulated_cost += costs[t]
                 if torch.prod(dones[t]) > 0:
