@@ -1,16 +1,24 @@
 import random
-from typing import Any
+from typing import Any, SupportsFloat
 
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
 import minigrid
-from gymnasium.core import WrapperObsType
+from gymnasium.core import WrapperObsType, WrapperActType
 from PIL import Image
 
 class TestWrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
+
+    def step(
+        self, action: WrapperActType
+    ) -> tuple[WrapperObsType, SupportsFloat, bool, bool, dict[str, Any]]:
+
+        obs, reward, terminated, truncated, info = super().step(action)
+        info['cost'] = 0.0
+        return obs, reward, terminated, truncated, info
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
@@ -38,7 +46,7 @@ if __name__ == '__main__':
         return env
 
     envs = gym.vector.SyncVectorEnv(
-        [make_env for i in range(1)],
+        [make_env for i in range(2)],
     )
     obs, info = envs.reset()
 
@@ -52,7 +60,7 @@ if __name__ == '__main__':
     # plt.show()
     for i in range(10):
         print(i)
-        actions = np.random.randint(envs.single_action_space.n, size=1)
+        actions = np.random.randint(envs.single_action_space.n, size=2)
         obs, reward, terminated, truncated, info = envs.step(actions)
         if "final_info" in info:
             print(f"{truncated=}, {terminated=}")
