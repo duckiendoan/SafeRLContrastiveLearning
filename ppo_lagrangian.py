@@ -234,7 +234,8 @@ if __name__ == "__main__":
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             # Assume that infos['cost'] exists
-            costs[step] = torch.tensor(infos['cost']).to(device).view(-1)
+            if "cost" in infos:
+                costs[step] = torch.tensor(infos['cost']).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
 
             if "final_info" in infos:
@@ -243,7 +244,8 @@ if __name__ == "__main__":
                         print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                         writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                         writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                        # writer.add_scalar("charts/episodic_cost", info["episode"]["c"], global_step)
+                        if "cost" in info:
+                            writer.add_scalar("charts/episodic_cost", info["cost"], global_step)
 
         # bootstrap value if not done
         with torch.no_grad():
