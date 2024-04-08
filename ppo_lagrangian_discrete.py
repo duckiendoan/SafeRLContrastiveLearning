@@ -81,6 +81,8 @@ class Args:
     """the lambda used in PPO-Langrangian objective"""
     cost_limit: float = 0.0
     """the min cost in PPO-Lagrangian"""
+    reseed: bool = False
+    """whether to fix seed when environment resets"""
 
 
 def make_env(env_id, idx, capture_video, run_name, gamma):
@@ -97,6 +99,8 @@ def make_env(env_id, idx, capture_video, run_name, gamma):
             env = minigrid.wrappers.ImgObsWrapper(env)
             env = gym.wrappers.ResizeObservation(env, (84, 84))
             env = TransposeImageWrapper(env)
+            if args.reseed:
+                env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -368,7 +372,7 @@ if __name__ == "__main__":
                     cv_loss = 0.5 * cv_loss_max.mean()
                 else:
                     cv_loss = 0.5 * ((newcvalue - b_cost_returns[mb_inds]) ** 2).mean()
-                loss = ppo_lg_objective + v_loss * args.vf_coef + cv_loss
+                loss = ppo_lg_objective + v_loss * args.vf_coef + cv_loss * args.vf_coef
 
                 optimizer.zero_grad()
                 loss.backward()
