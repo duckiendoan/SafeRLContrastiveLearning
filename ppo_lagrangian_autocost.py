@@ -13,9 +13,6 @@ import torch.optim as optim
 import tyro
 from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
-from gymnasium.core import WrapperObsType, WrapperActType
-from typing import Any, SupportsFloat
-from minigrid.core.world_object import Lava
 
 
 @dataclass
@@ -85,41 +82,6 @@ class Args:
     cost_limit: float = 0.0
     """the min cost in PPO-Lagrangian"""
 
-
-DIR_MAP = {
-    0: np.array([1, 0]),
-    1: np.array([0, 1]),
-    2: np.array([-1, 0]),
-    3: np.array([0, -1])
-}
-
-
-class NearestHazardCostWrapper(gym.Wrapper):
-    def __init__(self, env, cost_fn):
-        super().__init__(env)
-        self.lava_locations = None
-        self.cost_fn = cost_fn
-
-    def step(self, action):
-        obs, reward, terminated, truncated, info = self.env.step(action)
-        pos = np.array(self.env.unwrapped.agent_pos)
-        dir = self.env.unwrapped.agent_dir
-        min_d = min(
-            [np.sqrt(((pos - lava) ** 2).sum()) for lava in self.lava_locations if (lava - pos).dot(DIR_MAP[dir]) >= 0],
-            default=1e6)
-        info['cost'] = self.cost_fn(min_d)
-        return obs, reward, terminated, truncated, info
-
-    def reset(
-            self, *, seed: int | None = None, options: dict[str, Any] | None = None
-    ) -> tuple[WrapperObsType, dict[str, Any]]:
-        obs, info = self.env.reset(seed=seed, options=options)
-        grid = self.env.unwrapped.grid
-        self.lava_locations = [np.array((x % grid.width, x // grid.width)) for x, y in enumerate(grid.grid) if
-                               isinstance(y, Lava)]
-        return obs, info
-
-
 def make_env(env_id, idx, capture_video, run_name, gamma):
     def thunk():
         if capture_video and idx == 0:
@@ -127,9 +89,6 @@ def make_env(env_id, idx, capture_video, run_name, gamma):
             env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         else:
             env = gym.make(env_id)
-        if "MiniGrid" in env_id:
-            grid_width = env.unwrapped.grid.width
-            env = NearestHazardCostWrapper(env, lambda d: np.exp(-d/grid_width))
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         env = gym.wrappers.NormalizeObservation(env)
@@ -188,36 +147,38 @@ class Agent(nn.Module):
             action = probs.sample()
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x), self.cost_critic(x)
 
-if __name__ == "__main__":
-    args = tyro.cli(Args)
-    args.batch_size = int(args.num_envs * args.num_steps)
-    args.minibatch_size = int(args.batch_size // args.num_minibatches)
-    args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-    if args.track:
-        import wandb
 
-        wandb.init(
-            project=args.wandb_project_name,
-            entity=args.wandb_entity,
-            sync_tensorboard=True,
-            config=vars(args),
-            name=run_name,
-            monitor_gym=True,
-            save_code=True,
+class CostFunction(nn.Module):
+    def __init__(self, envs):
+        super().__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(np.array(envs.single_observation_space.shape).prod(), 4),
+            nn.ReLU(),
+            nn.Linear(4, 2),
+            nn.ReLU(),
+            nn.Linear(2, 1)
         )
-    writer = SummaryWriter(f"runs/{run_name}")
-    writer.add_text(
-        "hyperparameters",
-        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
-    )
 
-    # TRY NOT TO MODIFY: seeding
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    torch.backends.cudnn.deterministic = args.torch_deterministic
+    def forward(self, x):
+        return self.fc(x)
 
+
+def auto_cost(args, envs, population_size):
+    population = [CostFunction(envs) for _ in range(population_size)]
+
+    def mutate_gaussian_noise(cost_fn: nn.Module):
+        for p in cost_fn.parameters():
+            p.data += torch.normal(0, 1, size=p.size())
+    def mutate_random_scaling(cost_fn: nn.Module):
+        for p in cost_fn.parameters():
+            p.data *= torch.rand_like(p)
+
+    for cost_fn in population:
+        train(cost_fn)
+        pass
+
+
+def train(args, cost_fn):
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
@@ -315,7 +276,8 @@ if __name__ == "__main__":
                     nextnonterminal = 1.0 - dones[t + 1]
                     nextcvalues = cvalues[t + 1]
                 cost_delta = costs[t] + args.gamma * nextcvalues * nextnonterminal - cvalues[t]
-                cost_advantages[t] = lastgaelam = cost_delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                cost_advantages[
+                    t] = lastgaelam = cost_delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
             cost_returns = cost_advantages + cvalues
             # Calculate average cost
             episode_costs = []
@@ -325,7 +287,7 @@ if __name__ == "__main__":
                 if torch.prod(dones[t]) > 0:
                     indx = torch.nonzero(dones[t], as_tuple=True)
                     for add in indx[0]:
-                        episode_costs.append(accumulated_cost[add.item()].item())
+                        episode_costs.append(accumulated_cost[add.item()].cpu().item())
                         accumulated_cost[add.item()] = 0.0
             average_ep_cost = np.mean(episode_costs) if len(episode_costs) > 0 else 0.0
         # flatten the batch
@@ -356,7 +318,8 @@ if __name__ == "__main__":
                 end = start + args.minibatch_size
                 mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue, newcvalue = agent.get_action_and_value(b_obs[mb_inds], b_actions[mb_inds])
+                _, newlogprob, entropy, newvalue, newcvalue = agent.get_action_and_value(b_obs[mb_inds],
+                                                                                         b_actions[mb_inds])
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -444,3 +407,34 @@ if __name__ == "__main__":
 
     envs.close()
     writer.close()
+
+if __name__ == "__main__":
+    args = tyro.cli(Args)
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    args.num_iterations = args.total_timesteps // args.batch_size
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    if args.track:
+        import wandb
+
+        wandb.init(
+            project=args.wandb_project_name,
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
+    writer = SummaryWriter(f"runs/{run_name}")
+    writer.add_text(
+        "hyperparameters",
+        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+    )
+
+    # TRY NOT TO MODIFY: seeding
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = args.torch_deterministic
+
