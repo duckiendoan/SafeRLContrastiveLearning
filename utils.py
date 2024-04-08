@@ -1,7 +1,10 @@
 import minigrid
 import gymnasium as gym
 from gymnasium import Wrapper
-
+from gymnasium.core import WrapperObsType, WrapperActType
+from typing import Any, SupportsFloat
+from minigrid.core.world_object import Lava
+import numpy as np
 
 class TransposeImageWrapper(gym.ObservationWrapper):
     '''Transpose img dimension before being fed to neural net'''
@@ -58,3 +61,37 @@ class DeathLogWrapper(Wrapper):
             self.count += 1
 
         return obs, reward, terminated, truncated, info
+
+
+DIR_MAP = {
+    0: np.array([1, 0]),
+    1: np.array([0, 1]),
+    2: np.array([-1, 0]),
+    3: np.array([0, -1])
+}
+
+
+class NearestHazardCostWrapper(gym.Wrapper):
+    def __init__(self, env, cost_fn):
+        super().__init__(env)
+        self.lava_locations = None
+        self.cost_fn = cost_fn
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        pos = np.array(self.env.unwrapped.agent_pos)
+        dir = self.env.unwrapped.agent_dir
+        min_d = min(
+            [np.sqrt(((pos - lava) ** 2).sum()) for lava in self.lava_locations if (lava - pos).dot(DIR_MAP[dir]) >= 0],
+            default=1e6)
+        info['cost'] = self.cost_fn(min_d)
+        return obs, reward, terminated, truncated, info
+
+    def reset(
+            self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[WrapperObsType, dict[str, Any]]:
+        obs, info = self.env.reset(seed=seed, options=options)
+        grid = self.env.unwrapped.grid
+        self.lava_locations = [np.array((x % grid.width, x // grid.width)) for x, y in enumerate(grid.grid) if
+                               isinstance(y, Lava)]
+        return obs, info
