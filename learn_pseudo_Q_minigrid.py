@@ -202,12 +202,14 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
-        rewards = np.array([compute_pseudo_reward(q_priors, torch.Tensor(obs).to(device),
+        undesirability, pseudo_reward = compute_pseudo_reward(q_priors, torch.Tensor(obs).to(device),
                                                   actions.item(),
                                                   torch.Tensor(next_obs).to(device),
                                                   args.threshold,
-                                                  args.gamma)])
-        writer.add_scalar("charts/pseudo_reward", rewards.item(), global_step)
+                                                  args.gamma)
+        rewards = np.array([pseudo_reward])
+        writer.add_scalar("charts/undesirability", undesirability, global_step)
+        writer.add_scalar("charts/pseudo_reward", pseudo_reward, global_step)
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
             for info in infos["final_info"]:

@@ -41,7 +41,7 @@ def compute_pseudo_reward(Qs, obs, action, next_obs, threshold, gamma):
     # Select undesirable actions
     if (mean * entropy).item() > threshold:
         pseudo_reward = Wsa_probs.dot(Qvalues[:, action] - gamma * nextQvalues.max(dim=1)[0])
-    return pseudo_reward
+    return (mean * entropy).item(), pseudo_reward
 
 
 def load_q_priors(envs, path, device):
