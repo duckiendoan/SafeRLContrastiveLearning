@@ -14,9 +14,9 @@ import tyro
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 from lnt.lnt import SafetyWrapper
-from QLearningAgent import QLearningAgent
+from lnt.QLearningAgent import QLearningAgent
 from utils import TransposeImageWrapper
-from QLearningAgent import Args as QLearningArgs
+from lnt.QLearningAgent import Args as QLearningArgs
 
 @dataclass
 class Args:
