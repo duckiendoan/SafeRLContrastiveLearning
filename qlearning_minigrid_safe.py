@@ -74,7 +74,7 @@ class Args:
     """whether to fix seed on environment reset"""
     safe_q: str = './'
     """Path to the safe Q function"""
-    safety_threshold: float = -0.05
+    safety_threshold: float = -0.01
     """The Q-function difference threshold at which an action is deemed safe"""
     plot_state_heatmap: bool = True
     """whether to plot state heatmap"""
@@ -211,7 +211,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             mean_value = safe_q_values.mean(dim=1).cpu().item()
             action_value = safe_q_values[:, actions[0]].cpu().item()
             if action_value - mean_value < args.safety_threshold:
-                actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
+                if random.random() < epsilon:
+                    actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
+                else:
+                    actions = torch.argmax(safe_q_values, dim=1).cpu().numpy()
             writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
 
         if args.plot_state_heatmap:
