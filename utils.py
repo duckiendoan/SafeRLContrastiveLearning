@@ -28,7 +28,7 @@ class TransposeImageWrapper(gym.ObservationWrapper):
 
 
 class DeathLogWrapper(Wrapper):
-    def __init__(self, env, image_path="runs/images"):
+    def __init__(self, env):
         """A wrapper to prevent death in specific cells.
 
         Args:
@@ -38,9 +38,6 @@ class DeathLogWrapper(Wrapper):
 
         """
         super().__init__(env)
-        self.env = env
-        self.count = 0
-        self.image_path = image_path
 
     def step(self, action):
         # In Dynamic-Obstacles, obstacles move after the agent moves,
@@ -49,7 +46,7 @@ class DeathLogWrapper(Wrapper):
         going_to_death = (
                 action == self.actions.forward
                 and front_cell is not None
-                and front_cell.type in self.no_death_types
+                and front_cell.type == 'lava'
         )
 
         obs, reward, terminated, truncated, info = self.env.step(action)
@@ -57,7 +54,7 @@ class DeathLogWrapper(Wrapper):
         # We also check if the agent stays in death cells (e.g., lava)
         # without moving
         current_cell = self.grid.get(*self.agent_pos)
-        in_death = current_cell is not None and current_cell.type in self.no_death_types
+        in_death = current_cell is not None and current_cell.type == 'lava'
 
         if terminated and (going_to_death or in_death):
             self.count += 1
@@ -112,7 +109,7 @@ class StateCountRecorder:
         self.count[h, w] += 1
 
     def add_count_from_env(self, env):
-        self.add_count(*env.agent_pos)
+        self.add_count(*env.front_pos)
 
     def add_reward(self, w, h, r):
         self.rewards[h, w] += r

@@ -213,10 +213,12 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             if action_value - mean_value < args.safety_threshold:
                 actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
             writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
-        # TRY NOT TO MODIFY: execute the game and log data.
-        next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+
         if args.plot_state_heatmap:
             state_cnt_recorder.add_count_from_env(envs.envs[0])
+        # TRY NOT TO MODIFY: execute the game and log data.
+        next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
             for info in infos["final_info"]:
