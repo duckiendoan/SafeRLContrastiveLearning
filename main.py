@@ -53,8 +53,8 @@ if __name__ == '__main__':
     print(obs.shape)
     print(envs.single_observation_space.shape)
 
-    im = Image.fromarray(envs.get_attr("render")[0])
-    im.save("runs/images/1.jpg")
+    # im = Image.fromarray(envs.get_attr("render")[0])
+    # im.save("runs/images/1.jpg")
 
     # plt.imshow(obs[0, :, :, :])
     # plt.show()

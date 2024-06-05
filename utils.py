@@ -102,14 +102,14 @@ class StateCountRecorder:
     def __init__(self, env):
         self.shape = env.grid.height, env.grid.width
         self.count = np.zeros(self.shape, dtype=np.int32)
-        self.rewards = np.zeros(self.shape, dtype=float)
+        self.rewards = np.zeros(self.shape, dtype=np.float32)
         self.extract_mask(env)
 
     def add_count(self, w, h):
         self.count[h, w] += 1
 
     def add_count_from_env(self, env):
-        self.add_count(*env.front_pos)
+        self.add_count(*env.agent_pos)
 
     def add_reward(self, w, h, r):
         self.rewards[h, w] += r
@@ -175,3 +175,34 @@ class StateCountRecorder:
             self.count = np.load(f)
             self.mask = np.load(f)
         self.shape = self.count.shape
+
+
+class StateRecordingWrapper(Wrapper):
+    def __init__(self, env):
+        """A wrapper to prevent death in specific cells.
+
+        Args:
+            env: The environment to apply the wrapper
+            no_death_types: List of strings to identify death cells
+            death_cost: The negative reward received in death cells
+
+        """
+        super().__init__(env)
+        self.state_cnt_recorder = StateCountRecorder(env)
+
+    def step(self, action):
+        # In Dynamic-Obstacles, obstacles move after the agent moves,
+        # so we need to check for collision before self.env.step()
+        front_cell = self.grid.get(*self.front_pos)
+        going_to_death = (
+                action == self.actions.forward
+                and front_cell is not None
+                and front_cell.type == 'lava'
+        )
+        if going_to_death:
+            self.state_cnt_recorder.add_count(*self.front_pos)
+
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        if not going_to_death:
+            self.state_cnt_recorder.add_count(*self.agent_pos)
+        return obs, reward, terminated, truncated, info

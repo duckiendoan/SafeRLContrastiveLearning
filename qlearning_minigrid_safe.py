@@ -14,7 +14,7 @@ import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 import minigrid
-from utils import TransposeImageWrapper, StateCountRecorder
+from utils import TransposeImageWrapper, StateRecordingWrapper
 
 
 @dataclass
@@ -98,6 +98,8 @@ def make_env(env_id, seed, idx, capture_video, run_name):
             env = TransposeImageWrapper(env)
             if args.reseed:
                 env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
+            if args.plot_state_heatmap:
+                env = StateRecordingWrapper(env)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env.action_space.seed(seed)
 
@@ -196,8 +198,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     # TRY NOT TO MODIFY: start the game
     obs, _ = envs.reset(seed=args.seed)
     if args.plot_state_heatmap:
-        state_cnt_recorder = StateCountRecorder(envs.envs[0])
-        state_cnt_recorder.add_count_from_env(envs.envs[0])
+        state_cnt_recorder = envs.get_attr('state_cnt_recorder')[0]
 
     for global_step in range(args.total_timesteps):
         # ALGO LOGIC: put action logic here
@@ -220,8 +221,6 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     actions = np.array([np.random.choice(safe_actions[:, 1])])
                 writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
 
-        if args.plot_state_heatmap:
-            state_cnt_recorder.add_count_from_env(envs.envs[0])
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
 
