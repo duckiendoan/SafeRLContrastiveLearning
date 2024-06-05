@@ -73,9 +73,11 @@ class Args:
     reseed: bool = False
     """whether to fix seed on environment reset"""
     safe_q: str = './'
-    """Path to the safe Q function"""
-    safety_threshold: float = -0.01
-    """The Q-function difference threshold at which an action is deemed safe"""
+    """path to the safe Q function"""
+    safety_threshold: float = -0.03
+    """the Q-function difference threshold at which an action is deemed safe"""
+    prior_prob: float = 0.95
+    """the probability to use Q prior"""
     plot_state_heatmap: bool = True
     """whether to plot state heatmap"""
 
@@ -205,17 +207,16 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             q_values = q_network(torch.Tensor(obs).to(device))
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
 
-        # Safety check
-        with torch.no_grad():
-            safe_q_values = safe_q_network(torch.Tensor(obs).to(device))
-            mean_value = safe_q_values.mean(dim=1).cpu().item()
-            action_value = safe_q_values[:, actions[0]].cpu().item()
-            if action_value - mean_value < args.safety_threshold:
-                if random.random() < epsilon:
-                    actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
-                else:
-                    actions = torch.argmax(safe_q_values, dim=1).cpu().numpy()
-            writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
+        if random.random() < args.prior_prob:
+            # Safety check
+            with torch.no_grad():
+                safe_q_values = safe_q_network(torch.Tensor(obs).to(device))
+                mean_value = safe_q_values.mean(dim=1).cpu().item()
+                action_value = safe_q_values[:, actions[0]].cpu().item()
+                if action_value - mean_value < args.safety_threshold:
+                    safe_actions = torch.argwhere(safe_q_values > mean_value).cpu()
+                    actions = np.array([np.random.choice(safe_actions[:, 1])])
+                writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
 
         if args.plot_state_heatmap:
             state_cnt_recorder.add_count_from_env(envs.envs[0])
