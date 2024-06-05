@@ -37,10 +37,10 @@ def compute_pseudo_reward(Qs, obs, action, next_obs, threshold, gamma):
     # Compute entropy and mean
     entropy = (-Wsa_probs * torch.log(Wsa_probs)).sum() / np.log(N)
     mean = Wsa.mean()
-    pseudo_reward = 0.0
+    pseudo_reward = np.array([0.0])
     # Select undesirable actions
     if (mean * entropy).item() > threshold:
-        pseudo_reward = Wsa_probs.dot(Qvalues[:, action] - gamma * nextQvalues.max(dim=1)[0])
+        pseudo_reward = Wsa_probs.dot(Qvalues[:, action] - gamma * nextQvalues.max(dim=1)[0]).unsqueeze(0).cpu().numpy()
     return (mean * entropy).item(), pseudo_reward
 
 
@@ -48,7 +48,7 @@ def load_q_priors(envs, path, device):
     files = Path(path).rglob('*.cleanrl_model')
     Qs = []
     for file in files:
-        q_network = QNetwork(envs)
+        q_network = QNetwork(envs).to(device)
         q_network.load_state_dict(torch.load(str(file), map_location=device))
         Qs.append(q_network)
     return Qs

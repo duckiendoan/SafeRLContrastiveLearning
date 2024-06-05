@@ -14,8 +14,7 @@ import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 import minigrid
-from utils import TransposeImageWrapper
-from transferable_priors import load_q_priors, compute_pseudo_reward
+from utils import TransposeImageWrapper, StateCountRecorder
 
 @dataclass
 class Args:
@@ -73,11 +72,8 @@ class Args:
     """the frequency of training"""
     reseed: bool = False
     """whether to fix seed on environment reset"""
-    prior_path: str = './qpriors'
-    """the path to look for Q-function priors"""
-    threshold: float = 0.1
-    """the threshold to filter unsafe states"""
-
+    safe_q: str = './'
+    """Path to the safe Q function"""
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -177,8 +173,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
     target_network = QNetwork(envs).to(device)
     target_network.load_state_dict(q_network.state_dict())
-    # Load Q priors
-    q_priors = load_q_priors(envs, args.prior_path, device)
+    safe_q_network = QNetwork(envs).to(device)
+    safe_q_network.load_state_dict(torch.load(args.safe_q, map_location=device))
 
     rb = ReplayBuffer(
         args.buffer_size,
@@ -187,6 +183,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         device,
         handle_timeout_termination=False,
     )
+    state_cnt_recorder = StateCountRecorder(envs.envs[0])
+    state_cnt_recorder.add_count_from_env(envs.envs[0])
     start_time = time.time()
 
     # TRY NOT TO MODIFY: start the game
@@ -200,16 +198,16 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             q_values = q_network(torch.Tensor(obs).to(device))
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
 
+        with torch.no_grad():
+            safe_q_values = safe_q_network(torch.Tensor(obs).to(device))
+            mean_value = safe_q_values.mean(dim=1).cpu().item()
+            action_value = safe_q_values[:, actions[0]].cpu().item()
+            if action_value < mean_value:
+                actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
+            writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
-        undesirability, pseudo_reward = compute_pseudo_reward(q_priors, torch.Tensor(obs).to(device),
-                                                  actions.item(),
-                                                  torch.Tensor(next_obs).to(device),
-                                                  args.threshold,
-                                                  args.gamma)
-        rewards = pseudo_reward
-        writer.add_scalar("charts/undesirability", undesirability, global_step)
-        writer.add_scalar("charts/pseudo_reward", pseudo_reward.item(), global_step)
+        state_cnt_recorder.add_count_from_env(envs.envs[0])
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
             for info in infos["final_info"]:
@@ -255,6 +253,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     target_network_param.data.copy_(
                         args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
                     )
+                writer.add_figure("state_distribution/heatmap",
+                                  state_cnt_recorder.get_figure_log_scale(), global_step)
 
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"

@@ -33,7 +33,6 @@ if __name__ == '__main__':
         [make_env for i in range(2)],
     )
     obs, info = envs.reset()
-
     print(obs.shape)
     print(envs.single_observation_space.shape)
 

@@ -1,10 +1,11 @@
-import minigrid
+from typing import Any
+
 import gymnasium as gym
-from gymnasium import Wrapper
-from gymnasium.core import WrapperObsType, WrapperActType
-from typing import Any, SupportsFloat
-from minigrid.core.world_object import Lava
 import numpy as np
+from gymnasium import Wrapper
+from gymnasium.core import WrapperObsType
+from minigrid.core.world_object import Lava
+
 
 class TransposeImageWrapper(gym.ObservationWrapper):
     '''Transpose img dimension before being fed to neural net'''
@@ -95,3 +96,83 @@ class NearestHazardCostWrapper(gym.Wrapper):
         self.lava_locations = [np.array((x % grid.width, x // grid.width)) for x, y in enumerate(grid.grid) if
                                isinstance(y, Lava)]
         return obs, info
+
+
+class StateCountRecorder:
+    """Record state distributions, for ploting visitation frequency heatmap"""
+    def __init__(self, env):
+        self.shape = env.grid.height, env.grid.width
+        self.count = np.zeros(self.shape, dtype=np.int32)
+        self.rewards = np.zeros(self.shape, dtype=float)
+        self.extract_mask(env)
+
+    def add_count(self, w, h):
+        self.count[h, w] += 1
+
+    def add_count_from_env(self, env):
+        self.add_count(*env.agent_pos)
+
+    def add_reward(self, w, h, r):
+        self.rewards[h, w] += r
+
+    def add_reward_from_env(self, env, reward):
+        self.add_reward(*env.agent_pos, reward)
+
+    def get_figure_log_scale(self, cap_threshold_cnt=10_000):
+        """ plot heat map visitation, similar to `get_figure` but on log scale"""
+        import matplotlib
+        import matplotlib.pyplot as plt
+        cnt = np.clip(self.count+1, 0, cap_threshold_cnt)
+        plt.clf()
+        plt.jet()
+        plt.imshow(cnt, cmap="jet",
+            norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True))
+        cbar=plt.colorbar()
+        cbar.set_label('Visitation counts')
+
+        # over lay walls
+        plt.imshow(np.zeros_like(cnt, dtype=np.uint8),
+                cmap="gray", alpha=self.mask.astype(np.float),
+                vmin=0, vmax=1)
+        return plt.gcf()
+
+    def get_figure(self, cap_threshold_cnt=5000):
+        import matplotlib.pyplot as plt
+        cnt = np.clip(self.count, 0, cap_threshold_cnt)
+        plt.clf()
+        plt.jet()
+        plt.imshow(cnt, cmap="jet", vmin=0, vmax=cap_threshold_cnt)
+        cbar=plt.colorbar()
+        lin_spc = np.linspace(0, cap_threshold_cnt, 6).astype(np.int32)
+        # cbar.ax.yaxis.set_major_locator(ticker.FixedLocator(lin_spc))
+        cbar.update_ticks()
+        lin_spc = [str(i) for i in lin_spc]
+        lin_spc[-1] = ">"+lin_spc[-1]
+        cbar.ax.set_yticklabels(lin_spc)
+        cbar.set_label('Visitation counts')
+
+        # over lay walls
+        plt.imshow(np.zeros_like(cnt, dtype=np.uint8),
+                cmap="gray", alpha=self.mask.astype(np.float),
+                vmin=0, vmax=1)
+        return plt.gcf()
+
+    def extract_mask(self, env):
+        """ Extract walls from grid_env, used for masking wall cells in heatmap """
+        self.mask = np.zeros_like(self.count)
+        for i in range(env.grid.height):
+            for j in range(env.grid.width):
+                c = env.grid.get(i, j)
+                if c is not None and c.type=="wall":
+                    self.mask[i, j]=1
+
+    def save_to(self, file_path):
+        with open(file_path, 'wb') as f:
+            np.save(f, self.count)
+            np.save(f, self.mask)
+
+    def load_from(self, file_path):
+        with open(file_path, 'rb') as f:
+            self.count = np.load(f)
+            self.mask = np.load(f)
+        self.shape = self.count.shape
