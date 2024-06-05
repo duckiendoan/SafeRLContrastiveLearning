@@ -9,7 +9,8 @@ from minigrid.core.world_object import Lava
 
 class TransposeImageWrapper(gym.ObservationWrapper):
     '''Transpose img dimension before being fed to neural net'''
-    def __init__(self, env, op=[2,0,1]):
+
+    def __init__(self, env, op=[2, 0, 1]):
         super().__init__(env)
         assert len(op) == 3, "Error: Operation, " + str(op) + ", must be dim3"
         self.op = op
@@ -46,9 +47,9 @@ class DeathLogWrapper(Wrapper):
         # so we need to check for collision before self.env.step()
         front_cell = self.grid.get(*self.front_pos)
         going_to_death = (
-            action == self.actions.forward
-            and front_cell is not None
-            and front_cell.type in self.no_death_types
+                action == self.actions.forward
+                and front_cell is not None
+                and front_cell.type in self.no_death_types
         )
 
         obs, reward, terminated, truncated, info = self.env.step(action)
@@ -100,6 +101,7 @@ class NearestHazardCostWrapper(gym.Wrapper):
 
 class StateCountRecorder:
     """Record state distributions, for ploting visitation frequency heatmap"""
+
     def __init__(self, env):
         self.shape = env.grid.height, env.grid.width
         self.count = np.zeros(self.shape, dtype=np.int32)
@@ -122,18 +124,18 @@ class StateCountRecorder:
         """ plot heat map visitation, similar to `get_figure` but on log scale"""
         import matplotlib
         import matplotlib.pyplot as plt
-        cnt = np.clip(self.count+1, 0, cap_threshold_cnt)
+        cnt = np.clip(self.count + 1, 0, cap_threshold_cnt)
         plt.clf()
         plt.jet()
         plt.imshow(cnt, cmap="jet",
-            norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True))
-        cbar=plt.colorbar()
+                   norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True))
+        cbar = plt.colorbar()
         cbar.set_label('Visitation counts')
 
         # over lay walls
         plt.imshow(np.zeros_like(cnt, dtype=np.uint8),
-                cmap="gray", alpha=self.mask.astype(np.float),
-                vmin=0, vmax=1)
+                   cmap="gray", alpha=self.mask.astype(np.float32),
+                   vmin=0, vmax=1)
         return plt.gcf()
 
     def get_figure(self, cap_threshold_cnt=5000):
@@ -142,19 +144,19 @@ class StateCountRecorder:
         plt.clf()
         plt.jet()
         plt.imshow(cnt, cmap="jet", vmin=0, vmax=cap_threshold_cnt)
-        cbar=plt.colorbar()
+        cbar = plt.colorbar()
         lin_spc = np.linspace(0, cap_threshold_cnt, 6).astype(np.int32)
         # cbar.ax.yaxis.set_major_locator(ticker.FixedLocator(lin_spc))
         cbar.update_ticks()
         lin_spc = [str(i) for i in lin_spc]
-        lin_spc[-1] = ">"+lin_spc[-1]
+        lin_spc[-1] = ">" + lin_spc[-1]
         cbar.ax.set_yticklabels(lin_spc)
         cbar.set_label('Visitation counts')
 
         # over lay walls
         plt.imshow(np.zeros_like(cnt, dtype=np.uint8),
-                cmap="gray", alpha=self.mask.astype(np.float),
-                vmin=0, vmax=1)
+                   cmap="gray", alpha=self.mask.astype(np.float32),
+                   vmin=0, vmax=1)
         return plt.gcf()
 
     def extract_mask(self, env):
@@ -163,8 +165,8 @@ class StateCountRecorder:
         for i in range(env.grid.height):
             for j in range(env.grid.width):
                 c = env.grid.get(i, j)
-                if c is not None and c.type=="wall":
-                    self.mask[i, j]=1
+                if c is not None and c.type == "wall":
+                    self.mask[i, j] = 1
 
     def save_to(self, file_path):
         with open(file_path, 'wb') as f:

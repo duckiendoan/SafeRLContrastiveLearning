@@ -74,6 +74,8 @@ class Args:
     """whether to fix seed on environment reset"""
     safe_q: str = './'
     """Path to the safe Q function"""
+    safety_threshold: float = -0.05
+    """The Q-function difference threshold at which an action is deemed safe"""
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -183,12 +185,12 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         device,
         handle_timeout_termination=False,
     )
-    state_cnt_recorder = StateCountRecorder(envs.envs[0])
-    state_cnt_recorder.add_count_from_env(envs.envs[0])
     start_time = time.time()
 
     # TRY NOT TO MODIFY: start the game
     obs, _ = envs.reset(seed=args.seed)
+    state_cnt_recorder = StateCountRecorder(envs.envs[0])
+    state_cnt_recorder.add_count_from_env(envs.envs[0])
     for global_step in range(args.total_timesteps):
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps, global_step)
@@ -198,11 +200,12 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             q_values = q_network(torch.Tensor(obs).to(device))
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
 
+        # Safety check
         with torch.no_grad():
             safe_q_values = safe_q_network(torch.Tensor(obs).to(device))
             mean_value = safe_q_values.mean(dim=1).cpu().item()
             action_value = safe_q_values[:, actions[0]].cpu().item()
-            if action_value < mean_value:
+            if action_value - mean_value < args.safety_threshold:
                 actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
             writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
         # TRY NOT TO MODIFY: execute the game and log data.
