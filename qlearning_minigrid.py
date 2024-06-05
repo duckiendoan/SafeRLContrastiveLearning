@@ -14,7 +14,7 @@ import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 import minigrid
-from utils import TransposeImageWrapper
+from utils import TransposeImageWrapper, StateCountRecorder
 
 @dataclass
 class Args:
@@ -72,6 +72,8 @@ class Args:
     """the frequency of training"""
     reseed: bool = False
     """whether to fix seed on environment reset"""
+    plot_state_heatmap: bool = True
+    """whether to plot state heatmap"""
 
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -184,6 +186,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
     # TRY NOT TO MODIFY: start the game
     obs, _ = envs.reset(seed=args.seed)
+    if args.plot_state_heatmap:
+        state_cnt_recorder = StateCountRecorder(envs.envs[0])
+        state_cnt_recorder.add_count_from_env(envs.envs[0])
     for global_step in range(args.total_timesteps):
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps, global_step)
@@ -195,6 +200,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+        if args.plot_state_heatmap:
+            state_cnt_recorder.add_count_from_env(envs.envs[0])
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
@@ -241,6 +248,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     target_network_param.data.copy_(
                         args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
                     )
+                if args.plot_state_heatmap:
+                    writer.add_figure("state_distribution/heatmap",
+                                      state_cnt_recorder.get_figure_log_scale(), global_step)
 
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
