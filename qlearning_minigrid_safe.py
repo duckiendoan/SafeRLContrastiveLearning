@@ -16,6 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 import minigrid
 from utils import TransposeImageWrapper, StateCountRecorder
 
+
 @dataclass
 class Args:
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
@@ -200,7 +201,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
     for global_step in range(args.total_timesteps):
         # ALGO LOGIC: put action logic here
-        epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps, global_step)
+        epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
+                                  global_step)
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
@@ -270,7 +272,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     )
                 if args.plot_state_heatmap:
                     writer.add_figure("state_distribution/heatmap",
-                                        state_cnt_recorder.get_figure_log_scale(), global_step)
+                                      state_cnt_recorder.get_figure_log_scale(), global_step)
 
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
@@ -298,5 +300,13 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             repo_id = f"{args.hf_entity}/{repo_name}" if args.hf_entity else repo_name
             push_to_hub(args, episodic_returns, repo_id, "DQN", f"runs/{run_name}", f"videos/{run_name}-eval")
 
+    if args.plot_state_heatmap:
+        run_path = f"runs/{run_name}"
+        state_cnt_recorder.save_to(f"{run_path}/state_heatmap.npy")
+        state_cnt_recorder.get_figure_log_scale()
+        import matplotlib.pyplot as plt
+
+        plt.savefig(f"{run_path}/state_heatmap.svg", format="svg",
+                    transparent=True)
     envs.close()
     writer.close()
