@@ -75,7 +75,7 @@ class Args:
     """whether to fix seed on environment reset"""
     safe_q: str = './'
     """path to the safe Q function"""
-    safety_threshold: float = -0.03
+    safety_threshold: float = -0.05
     """the Q-function difference threshold at which an action is deemed safe"""
     prior_prob: float = 0.95
     """the probability to use Q prior"""
@@ -217,7 +217,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 mean_value = safe_q_values.mean(dim=1).cpu().item()
                 action_value = safe_q_values[:, actions[0]].cpu().item()
                 if action_value - mean_value < args.safety_threshold:
-                    safe_actions = torch.argwhere(safe_q_values > mean_value).cpu()
+                    safe_actions = torch.argwhere(safe_q_values > (mean_value + args.safety_threshold)).cpu()
                     actions = np.array([np.random.choice(safe_actions[:, 1])])
                 writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
 
@@ -231,9 +231,6 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                    if args.plot_state_heatmap:
-                        writer.add_figure("state_distribution/heatmap",
-                                          state_cnt_recorder.get_figure_log_scale(), global_step)
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
         real_next_obs = next_obs.copy()
@@ -272,6 +269,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     target_network_param.data.copy_(
                         args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
                     )
+                if global_step % (4 * args.target_network_frequency) == 0:
+                    if args.plot_state_heatmap:
+                        writer.add_figure("state_distribution/heatmap",
+                                          state_cnt_recorder.get_figure_log_scale(), global_step)
 
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"

@@ -212,9 +212,6 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                    if args.plot_state_heatmap:
-                        writer.add_figure("state_distribution/heatmap",
-                                          state_cnt_recorder.get_figure_log_scale(), global_step)
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
         real_next_obs = next_obs.copy()
@@ -253,6 +250,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     target_network_param.data.copy_(
                         args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
                     )
+                if global_step % (4 * args.target_network_frequency) == 0:
+                    if args.plot_state_heatmap:
+                        writer.add_figure("state_distribution/heatmap",
+                                          state_cnt_recorder.get_figure_log_scale(), global_step)
 
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
