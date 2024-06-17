@@ -103,7 +103,7 @@ class StateCountRecorder:
         self.shape = env.grid.height, env.grid.width
         self.count = np.zeros(self.shape, dtype=np.int32)
         self.rewards = np.zeros(self.shape, dtype=np.float32)
-        self.extract_mask(env)
+        self.mask = None
 
     def add_count(self, w, h):
         self.count[h, w] += 1
@@ -157,6 +157,8 @@ class StateCountRecorder:
         return plt.gcf()
 
     def extract_mask(self, env):
+        if self.mask is not None:
+            return
         """ Extract walls from grid_env, used for masking wall cells in heatmap """
         self.mask = np.zeros_like(self.count)
         for i in range(env.grid.height):
@@ -206,3 +208,10 @@ class StateRecordingWrapper(Wrapper):
         if not going_to_death:
             self.state_cnt_recorder.add_count(*self.agent_pos)
         return obs, reward, terminated, truncated, info
+
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[WrapperObsType, dict[str, Any]]:
+        obs, info = self.env.reset(seed=seed, options=options)
+        self.state_cnt_recorder.extract_mask(self.env)
+        return obs, info
