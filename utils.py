@@ -8,9 +8,9 @@ from minigrid.core.world_object import Lava
 
 
 class TransposeImageWrapper(gym.ObservationWrapper):
-    '''Transpose img dimension before being fed to neural net'''
+    """Transpose img dimension before being fed to neural net"""
 
-    def __init__(self, env, op=[2, 0, 1]):
+    def __init__(self, env, op=(2, 0, 1)):
         super().__init__(env)
         assert len(op) == 3, "Error: Operation, " + str(op) + ", must be dim3"
         self.op = op
