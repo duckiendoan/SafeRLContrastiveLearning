@@ -165,7 +165,7 @@ class StateCountRecorder:
             for j in range(env.grid.width):
                 c = env.grid.get(i, j)
                 if c is not None and c.type == "wall":
-                    self.mask[i, j] = 1
+                    self.mask[j, i] = 1
 
     def save_to(self, file_path):
         with open(file_path, 'wb') as f:
