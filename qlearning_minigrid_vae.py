@@ -162,6 +162,7 @@ class PixelEncoder(nn.Module):
 
     def forward_conv(self, obs):
         obs = self.resize(obs)
+        obs = obs.float()
         obs = (obs - 128) / 128.
         self.outputs['obs'] = obs
 
