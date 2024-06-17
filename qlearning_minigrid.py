@@ -250,10 +250,11 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     target_network_param.data.copy_(
                         args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
                     )
-                if global_step % (4 * args.target_network_frequency) == 0:
-                    if args.plot_state_heatmap:
-                        writer.add_figure("state_distribution/heatmap",
-                                          state_cnt_recorder.get_figure_log_scale(), global_step)
+
+            if global_step % (args.total_timesteps // 10) == 0:
+                if args.plot_state_heatmap:
+                    writer.add_figure("state_distribution/heatmap",
+                                      state_cnt_recorder.get_figure_log_scale(), global_step)
 
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
