@@ -92,7 +92,7 @@ class Args:
     """buffer size for training VAE"""
     save_ae_training_data_freq: int = -1
     """save training AE data buffer every n environment steps."""
-    save_sample_ae_reconstruction_every: int = 200_000
+    save_sample_ae_reconstruction_every: int = 50_000
     """save sample reconstruction from AE every n environment steps."""
     deterministic_latent: bool = False
     """deterministically sample from VAE when inference."""
@@ -443,6 +443,20 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     writer.add_scalar("losses/vae_loss", loss.item(), global_step)
                     writer.add_scalar("losses/vae_reconstruction_loss", reconstruct_loss.item(), global_step)
                     writer.add_scalar("losses/vae_kl_loss", kl_loss.item(), global_step)
+
+                if global_step % args.save_sample_ae_reconstruction_every == 0:
+                    # AE reconstruction
+                    save_reconstruction = reconstruct[0].detach()
+                    save_reconstruction = (save_reconstruction * 128 + 128).clip(0, 255).cpu()
+
+                    # AE target
+                    ae_target = encoder.outputs['obs'][0].detach()
+                    ae_target = (ae_target * 128 + 128).clip(0, 255).cpu()
+
+                    # log
+                    writer.add_image('image/VAE reconstruction', save_reconstruction.type(torch.uint8), global_step)
+                    writer.add_image('image/original', data.observations[0].cpu().type(torch.uint8), global_step)
+                    writer.add_image('image/VAE target', ae_target.type(torch.uint8), global_step)
 
                 encoder_optim.zero_grad()
                 decoder_optim.zero_grad()
