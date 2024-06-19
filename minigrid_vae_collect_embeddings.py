@@ -197,7 +197,7 @@ if __name__ == '__main__':
 
     obs, info = env.reset()
     grid = env.unwrapped.grid
-    observations = np.zeros((grid.width, grid.height, 4) + env.observation_space.shape, dtype=np.uint8)
+    observations = np.zeros((grid.width * grid.height * 4,) + env.observation_space.shape, dtype=np.uint8)
     for i in range(grid.width):
         for j in range(grid.height):
             c = grid.get(i, j)
@@ -206,10 +206,14 @@ if __name__ == '__main__':
                 for dir in range(4):
                     env.unwrapped.agent_dir = dir
                     obs = env.get_frame(highlight=env.unwrapped.highlight, tile_size=env.tile_size)
-                    observations[i, j, dir] = obs
+                    obs_idx = i * grid.height * 4 + j * 4 + dir
+                    observations[obs_idx] = obs
+                    assert obs_idx % 4 == dir
+                    assert (obs_idx // 4) % grid.height == j
+                    assert (obs_idx // (4 * grid.height)) == i
 
-    observations = observations.reshape((-1,) + env.observation_space.shape).transpose(0, 3, 1, 2)
+    observations = observations.transpose(0, 3, 1, 2)
     embeddings, _, _ = encoder.sample(torch.Tensor(observations).to(device))
     cpu_embeddings = embeddings.cpu().numpy()
-    np.save(f'{args.env_id}_obs_embeddings.npz', cpu_embeddings)
+    np.save(f'{args.env_id}_obs_embeddings.npy', cpu_embeddings)
 
