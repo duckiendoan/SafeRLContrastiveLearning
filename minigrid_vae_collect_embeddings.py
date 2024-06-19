@@ -38,7 +38,7 @@ class PixelEncoder(nn.Module):
         self.resize = Resize((84, 84), interpolation=0)  # Input image is resized to []
 
         self.convs = nn.ModuleList(
-            [nn.Conv2d(obs_shape[0], num_filters, 3, stride=2)]
+            [nn.Conv2d(obs_shape[2], num_filters, 3, stride=2)]
         )
         for i in range(num_layers - 1):
             self.convs.append(nn.Conv2d(num_filters, num_filters, 3, stride=1))
@@ -112,7 +112,7 @@ class PixelDecoder(nn.Module):
             )
         self.deconvs.append(
             nn.ConvTranspose2d(
-                num_filters, obs_shape[0], 3, stride=2, output_padding=1
+                num_filters, obs_shape[2], 3, stride=2, output_padding=1
             )
         )
 
@@ -189,10 +189,10 @@ if __name__ == '__main__':
     env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
     print(env.observation_space.shape)
 
-    encoder = PixelEncoder(env.observation_space.shape, args.ae_dim)
-    # encoder.load_state_dict(torch.load(args.encoder_path, map_location=device))
-    decoder = PixelDecoder(env.observation_space.shape, args.ae_dim)
-    # decoder.load_state_dict(torch.load(args.decoder_path, map_location=device))
+    encoder = PixelEncoder(env.observation_space.shape, args.ae_dim).to(device)
+    encoder.load_state_dict(torch.load(args.encoder_path, map_location=device))
+    decoder = PixelDecoder(env.observation_space.shape, args.ae_dim).to(device)
+    decoder.load_state_dict(torch.load(args.decoder_path, map_location=device))
 
 
     obs, info = env.reset()
