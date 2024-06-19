@@ -64,7 +64,7 @@ class PixelEncoder(nn.Module):
             conv = torch.relu(self.convs[i](conv))
             self.outputs['conv%s' % (i + 1)] = conv
 
-        h = conv.view(conv.size(0), -1)
+        h = conv.reshape(conv.size(0), -1)
         return h
 
     def reparameterize(self, mu, logvar):
@@ -194,10 +194,9 @@ if __name__ == '__main__':
     decoder = PixelDecoder(env.observation_space.shape, args.ae_dim).to(device)
     decoder.load_state_dict(torch.load(args.decoder_path, map_location=device))
 
-
     obs, info = env.reset()
     grid = env.unwrapped.grid
-    observations = np.zeros((grid.width * grid.height * 4,) + env.observation_space.shape, dtype=np.uint8)
+    observations = np.zeros(((grid.width - 2) * (grid.height - 2) * 4,) + env.observation_space.shape, dtype=np.uint8)
     for i in range(grid.width):
         for j in range(grid.height):
             c = grid.get(i, j)
@@ -206,14 +205,13 @@ if __name__ == '__main__':
                 for dir in range(4):
                     env.unwrapped.agent_dir = dir
                     obs = env.get_frame(highlight=env.unwrapped.highlight, tile_size=env.tile_size)
-                    obs_idx = i * grid.height * 4 + j * 4 + dir
+                    obs_idx = (i - 1) * (grid.height - 2) * 4 + (j - 1) * 4 + dir
                     observations[obs_idx] = obs
                     assert obs_idx % 4 == dir
-                    assert (obs_idx // 4) % grid.height == j
-                    assert (obs_idx // (4 * grid.height)) == i
+                    assert (obs_idx // 4) % (grid.height - 2) == j - 1
+                    assert (obs_idx // (4 * (grid.height - 2))) == i - 1
 
     observations = observations.transpose(0, 3, 1, 2)
     embeddings, _, _ = encoder.sample(torch.Tensor(observations).to(device))
-    cpu_embeddings = embeddings.cpu().numpy()
+    cpu_embeddings = embeddings.detach().cpu().numpy()
     np.save(f'{args.env_id}_obs_embeddings.npy', cpu_embeddings)
-
