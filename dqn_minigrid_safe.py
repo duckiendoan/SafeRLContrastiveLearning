@@ -158,6 +158,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             name=run_name,
             monitor_gym=True,
             save_code=True,
+            tags=['dqn', 'safe']
         )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
