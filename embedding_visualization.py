@@ -13,6 +13,8 @@ import pandas as pd
 
 @dataclass
 class Args:
+    path: str = 'runs/MiniGrid-LavaCrossingS9N1-v0_obs_embeddings.npy'
+    """path to load the embeddings"""
     env_id: str = "MiniGrid-LavaCrossingS9N1-v0"
     """the id of the environment"""
     seed: int = 1
@@ -38,7 +40,7 @@ if __name__ == '__main__':
     obs, info = env.reset()
     grid = env.unwrapped.grid
 
-    X = np.load('runs/MiniGrid-LavaCrossingS9N1-v0_obs_embeddings.npy')
+    X = np.load(args.path)
     tsne = TSNE(n_components=2, random_state=42)
     X_tsne = tsne.fit_transform(X)
     print(X_tsne.shape)

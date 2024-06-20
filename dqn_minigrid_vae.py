@@ -419,8 +419,11 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
                 # optimize the model
                 optimizer.zero_grad()
+                encoder_optim.zero_grad()
                 loss.backward()
+                nn.utils.clip_grad_norm_(encoder.parameters(), args.max_grad_norm)
                 optimizer.step()
+                encoder_optim.step()
 
             if global_step % args.vae_training_frequency == 0:
                 data = rb.sample(args.ae_batch_size)
