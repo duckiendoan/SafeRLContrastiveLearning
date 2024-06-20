@@ -212,6 +212,13 @@ if __name__ == '__main__':
                     assert (obs_idx // (4 * (grid.height - 2))) == i - 1
 
     observations = observations.transpose(0, 3, 1, 2)
-    embeddings, _, _ = encoder.sample(torch.Tensor(observations).to(device))
+    embeddings, mu, log_var = encoder.sample(torch.Tensor(observations).to(device))
+    reconstruction = decoder(embeddings)
+    assert encoder.outputs['obs'].shape == reconstruction.shape
+    reconstruct_loss = torch.nn.functional.mse_loss(reconstruction, encoder.outputs['obs'])
+    kl_loss = torch.mean(-0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)
+
+    print(f'Reconstruction loss: {reconstruct_loss.item()}')
+    print(f'KL loss: {kl_loss.item()}')
     cpu_embeddings = embeddings.detach().cpu().numpy()
-    np.save(f'{args.env_id}_obs_embeddings.npy', cpu_embeddings)
+    np.save(f'{args.env_id}__{args.seed}__obs_embeddings.npy', cpu_embeddings)

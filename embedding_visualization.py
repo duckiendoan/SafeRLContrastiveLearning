@@ -65,4 +65,5 @@ if __name__ == '__main__':
     df['labels'] = labels
     sns.scatterplot(data=df, x='TSNE1', y='TSNE2', hue='labels')
     plt.title('t-SNE visualization')
+    plt.savefig(f't-SNE_{args.env_id}_{args.seed}.png')
     plt.show()
