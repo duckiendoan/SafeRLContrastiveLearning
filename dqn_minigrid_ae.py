@@ -303,7 +303,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             name=run_name,
             monitor_gym=True,
             save_code=True,
-            tags=['dqn', 'vae']
+            tags=['dqn', 'vae', 'exp']
         )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
@@ -359,7 +359,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
-            obs_embedding, _, _ = encoder(torch.Tensor(obs).to(device))
+            obs_embedding = encoder(torch.Tensor(obs).to(device))
             q_values = q_network(obs_embedding)
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
 
