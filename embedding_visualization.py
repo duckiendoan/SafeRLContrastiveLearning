@@ -59,10 +59,11 @@ if __name__ == '__main__':
         if c is not None and c.type == 'lava':
             labels[obs_idx] = 'death'
 
-        if next_c is not None and next_c.type == 'lava':
+        if c is None and next_c is not None and next_c.type == 'lava':
             labels[obs_idx] = 'unsafe'
 
     df['labels'] = labels
+    print(df['labels'].value_counts())
     sns.scatterplot(data=df, x='TSNE1', y='TSNE2', hue='labels')
     plt.title('t-SNE visualization')
     plt.savefig(f't-SNE_{args.env_id}_{args.seed}.png')

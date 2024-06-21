@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import minigrid
 from gymnasium.core import WrapperObsType, WrapperActType
+from stable_baselines3.common.buffers import ReplayBuffer
 from PIL import Image
 
 class TestWrapper(gym.Wrapper):
@@ -46,7 +47,13 @@ if __name__ == '__main__':
         return env
 
     envs = gym.vector.SyncVectorEnv(
-        [make_env for i in range(2)],
+        [make_env for i in range(1)],
+    )
+    rb = ReplayBuffer(
+        10,
+        envs.single_observation_space,
+        envs.single_action_space,
+        handle_timeout_termination=False,
     )
     obs, info = envs.reset()
 
@@ -60,7 +67,11 @@ if __name__ == '__main__':
     # plt.show()
     for i in range(10):
         print(i)
-        actions = np.random.randint(envs.single_action_space.n, size=2)
-        obs, reward, terminated, truncated, info = envs.step(actions)
+        actions = np.random.randint(envs.single_action_space.n, size=1)
+        next_obs, reward, terminated, truncated, info = envs.step(actions)
+        rb.add(obs, next_obs, actions, reward, truncated, info)
         if "final_info" in info:
             print(f"{truncated=}, {terminated=}")
+        obs = next_obs
+
+    print(rb.sample(5).actions.shape)
