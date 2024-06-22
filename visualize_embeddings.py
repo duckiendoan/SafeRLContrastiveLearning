@@ -10,15 +10,16 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
 
-
 @dataclass
 class Args:
-    path: str = 'runs/MiniGrid-LavaCrossingS9N1-v0_obs_embeddings.npy'
+    path: str = 'runs/MiniGrid-LavaCrossingS9N1-v0__1__obs_embeddings.npy'
     """path to load the embeddings"""
     env_id: str = "MiniGrid-LavaCrossingS9N1-v0"
     """the id of the environment"""
     seed: int = 1
     """seed of the experiment"""
+    plotly: bool = False
+    """use plotly instead of seaborn"""
 
 
 if __name__ == '__main__':
@@ -47,6 +48,8 @@ if __name__ == '__main__':
     print(tsne.kl_divergence_)
     df = pd.DataFrame(X_tsne, columns=['TSNE1', 'TSNE2'])
     labels = ['safe' for _ in range(X_tsne.shape[0])]
+    names = ['i, j, dir' for _ in range(X_tsne.shape[0])]
+
     for obs_idx in range(X_tsne.shape[0]):
         dir = obs_idx % 4
         j = (obs_idx // 4) % (grid.height - 2) + 1
@@ -62,9 +65,32 @@ if __name__ == '__main__':
         if c is None and next_c is not None and next_c.type == 'lava':
             labels[obs_idx] = 'unsafe'
 
-    df['labels'] = labels
-    print(df['labels'].value_counts())
-    sns.scatterplot(data=df, x='TSNE1', y='TSNE2', hue='labels')
-    plt.title('t-SNE visualization')
-    plt.savefig(f't-SNE_{args.env_id}_{args.seed}.png')
-    plt.show()
+        names[obs_idx] = f'{i}, {j}, {dir}'
+
+    df['label'] = labels
+    df['name'] = names
+    print(df['label'].value_counts())
+
+    if args.plotly:
+        import plotly.express as px
+
+        fig = px.scatter(df, x='TSNE1', y='TSNE2', color='label', title='t-SNE visualization', hover_data=['name'])
+
+        # Update layout to improve hover information
+        fig.update_traces(marker=dict(size=10, opacity=0.8),
+                          selector=dict(mode='markers+text'))
+
+        fig.update_layout(
+            hovermode='closest'
+        )
+
+        # Save plot to an HTML file
+        fig.write_html('tsne_visualization_with_index.html')
+
+        # Show plot in browser
+        fig.show()
+    else:
+        ax = sns.scatterplot(data=df, x='TSNE1', y='TSNE2', hue='label')
+        plt.title('t-SNE visualization')
+        plt.savefig(f't-SNE_{args.env_id}_{args.seed}.png')
+        plt.show()

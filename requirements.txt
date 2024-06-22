@@ -6,3 +6,4 @@ stable_baselines3
 tyro
 tensorboard
 torchvision
+scikit-learn
