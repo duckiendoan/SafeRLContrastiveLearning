@@ -351,7 +351,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
             for idx, info in enumerate(infos["final_info"]):
-                obs['unsafe'][idx] = info['unsafe']
+                if info and 'unsafe' in info:
+                    obs['unsafe'][idx] = info['unsafe']
                 if info and "episode" in info:
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
