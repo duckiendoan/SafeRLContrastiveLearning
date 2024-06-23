@@ -38,7 +38,7 @@ class PixelEncoder(nn.Module):
         self.resize = Resize((84, 84))  # Input image is resized to []
 
         self.convs = nn.ModuleList(
-            [nn.Conv2d(obs_shape[0], num_filters, 3, stride=2)]
+            [nn.Conv2d(obs_shape[2], num_filters, 3, stride=2)]
         )
         for i in range(num_layers - 1):
             self.convs.append(nn.Conv2d(num_filters, num_filters, 3, stride=1))
@@ -102,7 +102,7 @@ class PixelDecoder(nn.Module):
             )
         self.deconvs.append(
             nn.ConvTranspose2d(
-                num_filters, obs_shape[0], 3, stride=2, output_padding=1
+                num_filters, obs_shape[2], 3, stride=2, output_padding=1
             )
         )
 
@@ -202,6 +202,7 @@ if __name__ == '__main__':
                     assert (obs_idx // (4 * (grid.height - 2))) == i - 1
 
     observations = observations.transpose(0, 3, 1, 2)
+    observations = np.ascontiguousarray(observations)
     embeddings = encoder(torch.Tensor(observations).to(device))
     reconstruction = decoder(embeddings)
     assert encoder.outputs['obs'].shape == reconstruction.shape
