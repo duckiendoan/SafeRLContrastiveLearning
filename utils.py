@@ -1,10 +1,33 @@
-from typing import Any
+from typing import Any, SupportsFloat
 
 import gymnasium as gym
 import numpy as np
-from gymnasium import Wrapper
-from gymnasium.core import WrapperObsType
+from gymnasium import Wrapper, spaces
+from gymnasium.core import WrapperObsType, ObsType, WrapperActType
 from minigrid.core.world_object import Lava
+
+
+class SafetyAwareObservationWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+        self.observation_space = gym.spaces.Dict({
+            'image': env.observation_space,
+            'unsafe': gym.spaces.Discrete(2)
+        })
+
+    def step(self, action):
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        unsafe = 0
+        if terminated and not truncated:
+            unsafe = 1
+            info['unsafe'] = unsafe
+        return {'image': obs, 'unsafe': unsafe}, reward, terminated, truncated, info
+
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[WrapperObsType, dict[str, Any]]:
+        obs, info = self.env.reset(seed=seed, options=options)
+        return {'image': obs, 'unsafe': 0}, info
 
 
 class TransposeImageWrapper(gym.ObservationWrapper):
@@ -210,7 +233,7 @@ class StateRecordingWrapper(Wrapper):
         return obs, reward, terminated, truncated, info
 
     def reset(
-        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+            self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[WrapperObsType, dict[str, Any]]:
         obs, info = self.env.reset(seed=seed, options=options)
         self.state_cnt_recorder.extract_mask(self.env)
