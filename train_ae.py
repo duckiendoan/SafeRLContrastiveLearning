@@ -256,7 +256,7 @@ if __name__ == '__main__':
             latent_dist = torch.cdist(latent, latent)
             dist_weights = labels @ labels.T
             assert dist_weights.shape == latent_dist.shape
-            min_dist = torch.where(dist_weights > 0, 0.0, 5.0)
+            min_dist = torch.where(dist_weights > 0, 0.0, 10.0)
             latent_dist_loss = 0.5 * torch.mean((latent_dist - min_dist) ** 2)
             loss = args.reconstruct_loss_coef * reconstruct_loss + args.latent_dist_coef * latent_dist_loss
 
@@ -280,18 +280,19 @@ if __name__ == '__main__':
             global_step += 1
 
         print(f"Epoch #{e+1}: {loss.item()}")
-        # AE reconstruction
-        save_reconstruction = reconstruction[0].detach()
-        save_reconstruction = (save_reconstruction * 128 + 128).clip(0, 255).cpu()
+        if e % 50 == 0:
+            # AE reconstruction
+            save_reconstruction = reconstruction[0].detach()
+            save_reconstruction = (save_reconstruction * 128 + 128).clip(0, 255).cpu()
 
-        # AE target
-        ae_target = encoder.outputs['obs'][0].detach()
-        ae_target = (ae_target * 128 + 128).clip(0, 255).cpu()
+            # AE target
+            ae_target = encoder.outputs['obs'][0].detach()
+            ae_target = (ae_target * 128 + 128).clip(0, 255).cpu()
 
-        # log
-        writer.add_image('image/AE reconstruction', save_reconstruction.type(torch.uint8), global_step)
-        writer.add_image('image/original', observations[0].cpu().type(torch.uint8), global_step)
-        writer.add_image('image/AE target', ae_target.type(torch.uint8), global_step)
+            # log
+            writer.add_image('image/AE reconstruction', save_reconstruction.type(torch.uint8), global_step)
+            writer.add_image('image/original', observations[0].cpu().type(torch.uint8), global_step)
+            writer.add_image('image/AE target', ae_target.type(torch.uint8), global_step)
 
     print("Training done! Visualizing embeddings...")
     embeddings = encoder(data_tensor.to(device))
