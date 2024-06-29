@@ -90,7 +90,7 @@ class Args:
     """latent distance loss coefficient in AE objective"""
     max_grad_norm: float = 0.5
     """the maximum norm for gradient clipping"""
-    ae_buffer_size: int = 100_000
+    ae_buffer_size: int = 50_000
     """buffer size for training VAE"""
     save_ae_training_data_freq: int = -1
     """save training AE data buffer every n environment steps."""
@@ -104,6 +104,8 @@ class Args:
     """save the buffer at the end of training."""
     ae_warmup_steps: int = 1000
     """warmup phase for VAE; intrinsic rewards are not considered in this period."""
+    min_latent_distance: float = 25.0
+    """min latent distance used in AE training objective"""
 
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -407,7 +409,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 latent_dist = torch.cdist(latent, latent)
                 dist_weights = unsafe @ unsafe.T
                 assert dist_weights.shape == latent_dist.shape
-                min_dist = torch.where(dist_weights > 0, 0.0, 5.0)
+                min_dist = torch.where(dist_weights > 0, 0.0, args.min_latent_distance)
                 latent_dist_loss = 0.5 * torch.mean((latent_dist - min_dist) ** 2)
                 loss = args.reconstruct_loss_coef * reconstruct_loss + args.latent_dist_coef * latent_dist_loss
 

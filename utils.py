@@ -18,9 +18,10 @@ class SafetyAwareObservationWrapper(gym.Wrapper):
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
         unsafe = 0
-        if terminated and not truncated:
+        if terminated and not truncated and reward < 0.0001:
             unsafe = 1
             info['unsafe'] = unsafe
+            reward += 0.5
         return {'image': obs, 'unsafe': unsafe}, reward, terminated, truncated, info
 
     def reset(
