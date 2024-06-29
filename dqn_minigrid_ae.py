@@ -102,7 +102,8 @@ class Args:
     """save the buffer at the end of training."""
     ae_warmup_steps: int = 1000
     """warmup phase for VAE; intrinsic rewards are not considered in this period."""
-
+    ae_path: str = None
+    """auto-encoder path to load model from"""
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -337,6 +338,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     decoder = PixelDecoder(envs.single_observation_space.shape, args.ae_dim).to(device)
     encoder_optim = optim.Adam(encoder.parameters(), lr=args.learning_rate, eps=1e-5)
     decoder_optim = optim.Adam(decoder.parameters(), lr=args.learning_rate, eps=1e-5)
+    if args.ae_path is not None:
+        pretrained_ae = torch.load(args.ae_path, map_location=device)
+        encoder.load_state_dict(pretrained_ae['encoder'])
+        decoder.load_state_dict(pretrained_ae['decoder'])
 
     rb = ReplayBuffer(
         args.buffer_size,
@@ -410,7 +415,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 optimizer.step()
                 encoder_optim.step()
 
-            if global_step % args.vae_training_frequency == 0:
+            if args.ae_path is None and global_step % args.vae_training_frequency == 0:
                 data = rb.sample(args.ae_batch_size)
                 latent = encoder(data.observations)
                 reconstruction = decoder(latent)
