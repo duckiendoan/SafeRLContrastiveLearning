@@ -509,6 +509,14 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
         torch.save(q_network.state_dict(), model_path)
         print(f"model saved to {model_path}")
+
+        ae_model_path = f"runs/{run_name}/{args.exp_name}_vae.pt"
+        torch.save({
+            'encoder': encoder.state_dict(),
+            'decoder': decoder.state_dict()
+        }, ae_model_path)
+        print(f"auto-encoder saved to {ae_model_path}")
+
         # from cleanrl_utils.evals.dqn_eval import evaluate
         #
         # episodic_returns = evaluate(

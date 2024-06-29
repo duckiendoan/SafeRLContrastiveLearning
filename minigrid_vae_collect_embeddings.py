@@ -9,10 +9,8 @@ import torch.nn as nn
 
 @dataclass
 class Args:
-    encoder_path: str = './encoder.pth'
-    """path to encoder"""
-    decoder_path: str = './decoder.pth'
-    """path to decoder"""
+    ae_path: str = './encoder.pth'
+    """path to auto-encoder"""
     env_id: str = "MiniGrid-LavaCrossingS9N1-v0"
     """the id of the environment"""
     seed: int = 1
@@ -189,10 +187,11 @@ if __name__ == '__main__':
     env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
     print(env.observation_space.shape)
 
+    pretrained_ae = torch.load(args.ae_path, map_location=device)
     encoder = PixelEncoder(env.observation_space.shape, args.ae_dim).to(device)
-    encoder.load_state_dict(torch.load(args.encoder_path, map_location=device))
+    encoder.load_state_dict(pretrained_ae['encoder'])
     decoder = PixelDecoder(env.observation_space.shape, args.ae_dim).to(device)
-    decoder.load_state_dict(torch.load(args.decoder_path, map_location=device))
+    decoder.load_state_dict(pretrained_ae['decoder'])
 
     obs, info = env.reset()
     grid = env.unwrapped.grid
