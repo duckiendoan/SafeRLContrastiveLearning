@@ -361,15 +361,18 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
                                   global_step)
+        obs_embedding = encoder(torch.Tensor(obs).to(device))
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
-            obs_embedding = encoder(torch.Tensor(obs).to(device))
+            # obs_embedding = encoder(torch.Tensor(obs).to(device))
             q_values = q_network(obs_embedding)
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+        next_obs_embedding = encoder(torch.Tensor(next_obs).to(device))
+        writer.add_scalar('charts/latent_distance', torch.linalg.vector_norm(obs_embedding, next_obs_embedding).item(), global_step)
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
