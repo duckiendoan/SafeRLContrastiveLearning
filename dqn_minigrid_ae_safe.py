@@ -363,6 +363,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     start_time = time.time()
     # TRY NOT TO MODIFY: start the game
     obs, _ = envs.reset(seed=args.seed)
+    prev_obs = None
     if args.plot_state_heatmap:
         state_cnt_recorder = envs.get_attr('state_cnt_recorder')[0]
 
@@ -382,13 +383,17 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         if random.random() < args.prior_prob:
             # Safety check
             with torch.no_grad():
-                safe_q_values = safe_q_network(obs_embedding)
-                mean_value = safe_q_values.mean(dim=1).cpu().item()
-                action_value = safe_q_values[:, actions[0]].cpu().item()
-                if action_value - mean_value < args.safety_threshold:
-                    safe_actions = torch.argwhere(safe_q_values > (mean_value + args.safety_threshold)).cpu()
-                    actions = np.array([np.random.choice(safe_actions[:, 1])])
-                writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
+                if prev_obs is not None:
+                    prev_obs_embedding = encoder(torch.Tensor(prev_obs).to(device))
+                    latent_dist = torch.linalg.vector_norm(obs_embedding - prev_obs).detach().cpu().numpy() / 25.0
+                    if latent_dist.item() > 0.2:
+                        safe_q_values = safe_q_network(obs_embedding)
+                        mean_value = safe_q_values.mean(dim=1).cpu().item()
+                        action_value = safe_q_values[:, actions[0]].cpu().item()
+                        if action_value - mean_value < args.safety_threshold:
+                            safe_actions = torch.argwhere(safe_q_values > (mean_value + args.safety_threshold)).cpu()
+                            actions = np.array([np.random.choice(safe_actions[:, 1])])
+                        writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
@@ -397,10 +402,12 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             latent_dist = torch.linalg.vector_norm(obs_embedding - next_obs_embedding)
             writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
 
+        prev_obs = obs
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
             for info in infos["final_info"]:
                 if info and "episode" in info:
+                    prev_obs = None
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
