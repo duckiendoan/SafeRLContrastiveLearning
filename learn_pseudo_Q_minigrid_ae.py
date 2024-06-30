@@ -15,6 +15,7 @@ import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
+from transferable_priors import compute_pseudo_reward
 from utils import TransposeImageWrapper, StateRecordingWrapper
 
 
@@ -76,6 +77,12 @@ class Args:
     """whether to fix seed on environment reset"""
     plot_state_heatmap: bool = True
     """whether to plot state heatmap"""
+
+    # Transferable priors argument
+    prior_path: str = './qpriors'
+    """the path to look for Q-function priors"""
+    threshold: float = 0.1
+    """the threshold to filter unsafe states"""
 
     # VAE arguments
     ae_dim: int = 50
@@ -255,24 +262,16 @@ class QNetwork(nn.Module):
     def forward(self, x):
         return self.network(x)
 
-class PixelQNetwork(nn.Module):
-    def __init__(self, env):
-        super().__init__()
-        self.network = nn.Sequential(
-            nn.Conv2d(3, 32, 8, stride=4),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(64 * 7 * 7, 512),
-            nn.ReLU(),
-            nn.Linear(512, env.single_action_space.n),
-        )
 
-    def forward(self, x):
-        return self.network(x / 255.0)
+def load_q_priors(envs, input_dim, path, device):
+    from pathlib import Path
+    files = Path(path).rglob('*.cleanrl_model')
+    Qs = []
+    for file in files:
+        q_network = QNetwork(envs, input_dim).to(device)
+        q_network.load_state_dict(torch.load(str(file), map_location=device))
+        Qs.append(q_network)
+    return Qs
 
 
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
@@ -330,12 +329,15 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
     target_network = QNetwork(envs, input_dim=args.ae_dim).to(device)
     target_network.load_state_dict(q_network.state_dict())
+    # Load Q priors
+    q_priors = load_q_priors(envs, args.ae_dim, args.prior_path, device)
 
     # VAE
     encoder = PixelEncoder(envs.single_observation_space.shape, args.ae_dim).to(device)
     decoder = PixelDecoder(envs.single_observation_space.shape, args.ae_dim).to(device)
     encoder_optim = optim.Adam(encoder.parameters(), lr=args.learning_rate, eps=1e-5)
     decoder_optim = optim.Adam(decoder.parameters(), lr=args.learning_rate, eps=1e-5)
+
     if args.ae_path is not None:
         pretrained_ae = torch.load(args.ae_path, map_location=device)
         encoder.load_state_dict(pretrained_ae['encoder'])
@@ -369,15 +371,16 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
-        if args.ae_path is not None:
-            next_obs_embedding = encoder(torch.Tensor(next_obs).to(device))
-            latent_dist = torch.linalg.vector_norm(obs_embedding - next_obs_embedding)
-            writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
-            latent_dist = latent_dist.detach().cpu().numpy() / 25.0
-            for idx, term in enumerate(terminations):
-                if term and rewards[idx] < 0.0001:
-                    writer.add_scalar("charts/episodic_return_death", -0.1, global_step)
-            rewards -= np.where(latent_dist > 0.2, latent_dist, 0.0)
+        # Learn pseudo-reward
+        next_obs_embedding = encoder(torch.Tensor(next_obs).to(device))
+        undesirability, pseudo_reward = compute_pseudo_reward(q_priors, obs_embedding.detach(),
+                                                              actions.item(),
+                                                              next_obs_embedding.detach(),
+                                                              args.threshold,
+                                                              args.gamma)
+        rewards = pseudo_reward
+        writer.add_scalar("charts/undesirability", undesirability, global_step)
+        writer.add_scalar("charts/pseudo_reward", pseudo_reward.item(), global_step)
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
