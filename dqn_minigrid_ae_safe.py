@@ -392,9 +392,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 current_ae_buffer_size = args.safety_buffer_size if ae_buffer_is_full else buffer_ae_indx
                 if current_ae_buffer_size > 3:
                     ae_indx_batch = torch.randint(low=0, high=current_ae_buffer_size,
-                                                  size=(args.ae_batch_size,))
+                                                  size=(args.safety_buffer_size,))
                     unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]
-                    assert unsafe_obs_batch.shape[0] == current_ae_buffer_size * obs_embedding.shape[0]
+                    assert unsafe_obs_batch.shape[0] == args.safety_buffer_size * obs_embedding.shape[0]
                     assert unsafe_obs_batch.shape[1] == obs_embedding.shape[1]
                     latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding, dim=1).mean().detach().cpu().numpy()
                     writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
@@ -428,7 +428,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         for idx, term in enumerate(terminations):
             if term:
                 unsafe_obs_buffer[buffer_ae_indx] = obs_embedding[idx]
-                buffer_ae_indx = (buffer_ae_indx + 1) % args.ae_buffer_size
+                buffer_ae_indx = (buffer_ae_indx + 1) % args.safety_buffer_size
                 ae_buffer_is_full = ae_buffer_is_full or buffer_ae_indx == 0
 
         rb.add(obs, real_next_obs, actions, rewards, terminations, infos)
