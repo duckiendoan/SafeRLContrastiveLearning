@@ -5,7 +5,7 @@ import numpy as np
 from gymnasium import Wrapper, spaces
 from gymnasium.core import WrapperObsType, ObsType, WrapperActType
 from minigrid.core.world_object import Lava
-
+import seaborn as sns
 
 class SafetyAwareObservationWrapper(gym.Wrapper):
     def __init__(self, env):
@@ -128,6 +128,7 @@ class StateCountRecorder:
         self.count = np.zeros(self.shape, dtype=np.int32)
         self.rewards = np.zeros(self.shape, dtype=np.float32)
         self.mask = None
+        self.lava_mask = None
 
     def add_count(self, w, h):
         self.count[h, w] += 1
@@ -147,11 +148,18 @@ class StateCountRecorder:
         import matplotlib.pyplot as plt
         cnt = np.clip(self.count + 1, 0, cap_threshold_cnt)
         plt.clf()
-        plt.jet()
-        plt.imshow(cnt, cmap="jet",
-                   norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True))
+        # plt.jet()
+        # plt.imshow(cnt, cmap="jet",
+        #            norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True))
+        plt.imshow(cnt, cmap=sns.light_palette('#044271', as_cmap=True),
+                   norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True),
+                   alpha=1 - self.lava_mask.astype(np.float32))
+
         cbar = plt.colorbar()
         cbar.set_label('Visitation counts')
+        plt.imshow(cnt * self.lava_mask, cmap='Oranges',
+                   norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True),
+                   alpha=self.lava_mask.astype(np.float32))
 
         # over lay walls
         plt.imshow(np.zeros_like(cnt, dtype=np.uint8),
@@ -185,21 +193,26 @@ class StateCountRecorder:
             return
         """ Extract walls from grid_env, used for masking wall cells in heatmap """
         self.mask = np.zeros_like(self.count)
+        self.lava_mask = np.zeros_like(self.count)
         for i in range(env.grid.height):
             for j in range(env.grid.width):
                 c = env.grid.get(i, j)
                 if c is not None and c.type == "wall":
                     self.mask[j, i] = 1
+                if c is not None and c.type == "lava":
+                    self.lava_mask[j, i] = 1
 
     def save_to(self, file_path):
         with open(file_path, 'wb') as f:
             np.save(f, self.count)
             np.save(f, self.mask)
+            np.save(f, self.lava_mask)
 
     def load_from(self, file_path):
         with open(file_path, 'rb') as f:
             self.count = np.load(f)
             self.mask = np.load(f)
+            self.lava_mask = np.load(f)
         self.shape = self.count.shape
 
 
