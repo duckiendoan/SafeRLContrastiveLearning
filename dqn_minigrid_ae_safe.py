@@ -112,6 +112,10 @@ class Args:
     """the Q-function difference threshold at which an action is deemed safe"""
     prior_prob: float = 0.95
     """the probability to use Q prior"""
+    safety_buffer_size: int = 100
+    """the size of the buffer that stores unsafe observations"""
+    safety_batch_size: int = 10
+    """the batch size for sampling from buffer"""
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -359,11 +363,13 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         device,
         handle_timeout_termination=False,
     )
+    unsafe_obs_buffer = torch.zeros((args.safety_buffer_size, args.ae_dim)).float().to(device)
+    buffer_ae_indx = 0
+    ae_buffer_is_full = False
 
     start_time = time.time()
     # TRY NOT TO MODIFY: start the game
     obs, _ = envs.reset(seed=args.seed)
-    prev_obs = None
     if args.plot_state_heatmap:
         state_cnt_recorder = envs.get_attr('state_cnt_recorder')[0]
 
@@ -383,10 +389,17 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         if random.random() < args.prior_prob:
             # Safety check
             with torch.no_grad():
-                if prev_obs is not None:
-                    prev_obs_embedding = encoder(torch.Tensor(prev_obs).to(device))
-                    latent_dist = torch.linalg.vector_norm(obs_embedding - prev_obs).detach().cpu().numpy() / 25.0
-                    if latent_dist.item() > 0.2:
+                current_ae_buffer_size = args.safety_buffer_size if ae_buffer_is_full else buffer_ae_indx
+                if current_ae_buffer_size > 3:
+                    ae_indx_batch = torch.randint(low=0, high=current_ae_buffer_size,
+                                                  size=(args.ae_batch_size,))
+                    unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]
+                    assert unsafe_obs_batch.shape[0] == current_ae_buffer_size * obs_embedding.shape[0]
+                    assert unsafe_obs_batch.shape[1] == obs_embedding.shape[1]
+                    latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding, dim=1).mean().detach().cpu().numpy()
+                    writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
+
+                    if latent_dist.item() < 0.1:
                         safe_q_values = safe_q_network(obs_embedding)
                         mean_value = safe_q_values.mean(dim=1).cpu().item()
                         action_value = safe_q_values[:, actions[0]].cpu().item()
@@ -397,17 +410,11 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
-        if args.ae_path is not None:
-            next_obs_embedding = encoder(torch.Tensor(next_obs).to(device))
-            latent_dist = torch.linalg.vector_norm(obs_embedding - next_obs_embedding)
-            writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
 
-        prev_obs = obs
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if "final_info" in infos:
             for info in infos["final_info"]:
                 if info and "episode" in info:
-                    prev_obs = None
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
@@ -417,6 +424,13 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         for idx, trunc in enumerate(truncations):
             if trunc:
                 real_next_obs[idx] = infos["final_observation"][idx]
+
+        for idx, term in enumerate(terminations):
+            if term:
+                unsafe_obs_buffer[buffer_ae_indx] = obs_embedding[idx]
+                buffer_ae_indx = (buffer_ae_indx + 1) % args.ae_buffer_size
+                ae_buffer_is_full = ae_buffer_is_full or buffer_ae_indx == 0
+
         rb.add(obs, real_next_obs, actions, rewards, terminations, infos)
 
         # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
