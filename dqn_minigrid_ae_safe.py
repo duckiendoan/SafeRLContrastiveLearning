@@ -116,6 +116,8 @@ class Args:
     """the size of the buffer that stores unsafe observations"""
     safety_batch_size: int = 10
     """the batch size for sampling from buffer"""
+    max_latent_dist: float = 4.0
+    """the minimum latent distance to filter unsafe states"""
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -399,7 +401,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding, dim=1).mean().detach().cpu().numpy()
                     writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
 
-                    if latent_dist.item() < 0.1:
+                    if latent_dist.item() < args.max_latent_dist:
                         safe_q_values = safe_q_network(obs_embedding)
                         mean_value = safe_q_values.mean(dim=1).cpu().item()
                         action_value = safe_q_values[:, actions[0]].cpu().item()
@@ -455,12 +457,14 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
                 # optimize the model
+                if args.ae_path is None:
+                    encoder_optim.zero_grad()
                 optimizer.zero_grad()
-                encoder_optim.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(encoder.parameters(), args.max_grad_norm)
                 optimizer.step()
-                encoder_optim.step()
+                if args.ae_path is None:
+                    nn.utils.clip_grad_norm_(encoder.parameters(), args.max_grad_norm)
+                    encoder_optim.step()
 
             if args.ae_path is None and global_step % args.vae_training_frequency == 0:
                 data = rb.sample(args.ae_batch_size)
