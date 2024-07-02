@@ -203,16 +203,13 @@ class StateCountRecorder:
                     self.lava_mask[j, i] = 1
 
     def save_to(self, file_path):
-        with open(file_path, 'wb') as f:
-            np.save(f, self.count)
-            np.save(f, self.mask)
-            np.save(f, self.lava_mask)
+        np.savez(file_path, count=self.count, wall_mask=self.mask, lava_mask=self.lava_mask)
 
     def load_from(self, file_path):
-        with open(file_path, 'rb') as f:
-            self.count = np.load(f)
-            self.mask = np.load(f)
-            self.lava_mask = np.load(f)
+        data = np.load(file_path)
+        self.count = data['count'].copy()
+        self.mask = data['wall_mask'].copy()
+        self.lava_mask = data['lava_mask'].copy()
         self.shape = self.count.shape
 
 
