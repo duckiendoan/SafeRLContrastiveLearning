@@ -1,11 +1,13 @@
-from typing import Any, SupportsFloat
+from typing import Any
 
 import gymnasium as gym
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
-from gymnasium import Wrapper, spaces
-from gymnasium.core import WrapperObsType, ObsType, WrapperActType
+from gymnasium import Wrapper
+from gymnasium.core import WrapperObsType
+from matplotlib.patches import Rectangle
 from minigrid.core.world_object import Lava
-import seaborn as sns
 
 
 class SafetyCheckWrapper(gym.Wrapper):
@@ -159,26 +161,26 @@ class StateCountRecorder:
 
     def get_figure_log_scale(self, cap_threshold_cnt=10_000):
         """ plot heat map visitation, similar to `get_figure` but on log scale"""
-        import matplotlib
-        import matplotlib.pyplot as plt
         cnt = np.clip(self.count + 1, 0, cap_threshold_cnt)
         plt.clf()
         # plt.jet()
-        # plt.imshow(cnt, cmap="jet",
-        #            norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True))
-        plt.imshow(cnt, cmap=sns.light_palette('#044271', as_cmap=True),
+        plt.imshow(cnt, cmap="jet",
                    norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True),
-                   alpha=1 - self.lava_mask.astype(np.float32))
+                   extent=(0, cnt.shape[1], 0, cnt.shape[0]))
 
         cbar = plt.colorbar()
         cbar.set_label('Visitation counts')
-        plt.imshow(cnt * self.lava_mask, cmap='Oranges',
-                   norm=matplotlib.colors.LogNorm(vmin=1, vmax=cap_threshold_cnt, clip=True),
-                   alpha=self.lava_mask.astype(np.float32))
+        ax = plt.gca()
+        for y in range(cnt.shape[0]):
+            for x in range(cnt.shape[1]):
+                if self.lava_mask[y][x] == 1:
+                    ax.add_patch(Rectangle((x, y), 1, 1, fill=False,
+                                           edgecolor='red', lw=2))
 
         # over lay walls
         plt.imshow(np.zeros_like(cnt, dtype=np.uint8),
                    cmap="gray", alpha=self.mask.astype(np.float32),
+                   extent=(0, cnt.shape[1], 0, cnt.shape[0]),
                    vmin=0, vmax=1)
         return plt.gcf()
 
