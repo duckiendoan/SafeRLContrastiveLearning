@@ -257,20 +257,6 @@ class PixelDecoder(nn.Module):
 
 # ALGO LOGIC: initialize agent here:
 class QNetwork(nn.Module):
-    def __init__(self, env, input_dim):
-        super().__init__()
-        self.network = nn.Sequential(
-            nn.Linear(input_dim, 120),
-            nn.ReLU(),
-            nn.Linear(120, 84),
-            nn.ReLU(),
-            nn.Linear(84, env.single_action_space.n),
-        )
-
-    def forward(self, x):
-        return self.network(x)
-
-class PixelQNetwork(nn.Module):
     def __init__(self, env):
         super().__init__()
         self.network = nn.Sequential(
@@ -341,12 +327,12 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    q_network = QNetwork(envs, input_dim=args.ae_dim).to(device)
+    q_network = QNetwork(envs).to(device)
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
-    target_network = QNetwork(envs, input_dim=args.ae_dim).to(device)
+    target_network = QNetwork(envs).to(device)
     target_network.load_state_dict(q_network.state_dict())
     # Safe Q-network
-    safe_q_network = QNetwork(envs, input_dim=args.ae_dim).to(device)
+    safe_q_network = QNetwork(envs).to(device)
     safe_q_network.load_state_dict(torch.load(args.safe_q, map_location=device))
 
     # VAE
@@ -381,14 +367,12 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
                                   global_step)
-        obs_embedding = encoder(torch.Tensor(obs).to(device))
         predicted_action_safety = 1
 
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
-            # obs_embedding = encoder(torch.Tensor(obs).to(device))
-            q_values = q_network(obs_embedding)
+            q_values = q_network(torch.Tensor(obs).to(device))
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
         true_action_safety = envs.call('check_safety', actions[0])[0]
 
@@ -396,6 +380,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         with torch.no_grad():
             current_ae_buffer_size = args.safety_buffer_size if ae_buffer_is_full else buffer_ae_indx
             if current_ae_buffer_size > 3:
+                obs_embedding = encoder(torch.Tensor(obs).to(device))
                 ae_indx_batch = torch.randint(low=0, high=current_ae_buffer_size,
                                               size=(args.safety_buffer_size,))
                 unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]
@@ -453,11 +438,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             if global_step % args.train_frequency == 0:
                 data = rb.sample(args.batch_size)
                 with torch.no_grad():
-                    next_obs_embeddings = encoder(data.next_observations)
-                    target_max, _ = target_network(next_obs_embeddings).max(dim=1)
+                    target_max, _ = target_network(data.next_observations).max(dim=1)
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
-                obs_embeddings = encoder(data.observations)
-                old_val = q_network(obs_embeddings).gather(1, data.actions).squeeze()
+                old_val = q_network(data.observations).gather(1, data.actions).squeeze()
                 loss = F.mse_loss(td_target, old_val)
 
                 if global_step % 100 == 0:
@@ -467,14 +450,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
                 # optimize the model
-                if args.ae_path is None:
-                    encoder_optim.zero_grad()
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                if args.ae_path is None:
-                    nn.utils.clip_grad_norm_(encoder.parameters(), args.max_grad_norm)
-                    encoder_optim.step()
 
             if args.ae_path is None and global_step % args.vae_training_frequency == 0:
                 data = rb.sample(args.ae_batch_size)

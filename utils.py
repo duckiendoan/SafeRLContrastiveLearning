@@ -3,6 +3,7 @@ from typing import Any
 import gymnasium as gym
 import matplotlib
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
 from gymnasium import Wrapper
 from gymnasium.core import WrapperObsType
@@ -266,3 +267,10 @@ class StateRecordingWrapper(Wrapper):
         obs, info = self.env.reset(seed=seed, options=options)
         self.state_cnt_recorder.extract_mask(self.env)
         return obs, info
+
+
+def plot_confusion_matrix(confusion_matrix):
+    plt.clf()
+    ax = sns.heatmap(confusion_matrix, annot=True, linewidth=.5)
+    ax.set(xlabel='Actual', ylabel='Predicted')
+    return plt.gcf()
