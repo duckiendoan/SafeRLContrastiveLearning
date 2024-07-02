@@ -404,8 +404,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 assert unsafe_obs_batch.shape[1] == obs_embedding.shape[1]
                 latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding, dim=1).mean().detach().cpu().numpy()
                 writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
-
-                if latent_dist.item() < args.max_latent_dist and random.random() < args.prior_prob:
+                current_unsafe_buffer = unsafe_obs_buffer[:current_ae_buffer_size]
+                mean_dist = torch.cdist(current_unsafe_buffer, current_unsafe_buffer).mean()
+                writer.add_scalar('charts/mean_latent_distance', mean_dist.item(), global_step)
+                if latent_dist.item() < min(args.max_latent_dist, mean_dist.item()) and random.random() < args.prior_prob:
                     safe_q_values = safe_q_network(obs_embedding)
                     mean_value = safe_q_values.mean(dim=1).cpu().item()
                     action_value = safe_q_values[:, actions[0]].cpu().item()
