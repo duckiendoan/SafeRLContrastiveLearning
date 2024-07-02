@@ -175,7 +175,7 @@ class StateCountRecorder:
         for y in range(cnt.shape[0]):
             for x in range(cnt.shape[1]):
                 if self.lava_mask[y][x] == 1:
-                    ax.add_patch(Rectangle((x, y), 1, 1, fill=False,
+                    ax.add_patch(Rectangle((x, cnt.shape[0] - 1 - y), 1, 1, fill=False,
                                            edgecolor='red', lw=2))
 
         # over lay walls
