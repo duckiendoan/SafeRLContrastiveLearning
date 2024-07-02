@@ -271,6 +271,6 @@ class StateRecordingWrapper(Wrapper):
 
 def plot_confusion_matrix(confusion_matrix):
     plt.clf()
-    ax = sns.heatmap(confusion_matrix, annot=True, linewidth=.5)
+    ax = sns.heatmap(confusion_matrix, annot=True, linewidth=.5, fmt=',d')
     ax.set(xlabel='Actual', ylabel='Predicted')
     return plt.gcf()
