@@ -390,7 +390,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
 
                 if latent_dist.item() < args.max_latent_dist and random.random() < args.prior_prob:
-                    safe_q_values = safe_q_network(obs_embedding)
+                    safe_q_values = safe_q_network(torch.Tensor(obs).to(device))
                     mean_value = safe_q_values.mean(dim=1).cpu().item()
                     action_value = safe_q_values[:, actions[0]].cpu().item()
                     if action_value - mean_value < args.safety_threshold:
