@@ -378,9 +378,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
         # Safe interference
         with torch.no_grad():
+            obs_embedding = encoder(torch.Tensor(obs).to(device))
             current_ae_buffer_size = args.safety_buffer_size if ae_buffer_is_full else buffer_ae_indx
             if current_ae_buffer_size > 3:
-                obs_embedding = encoder(torch.Tensor(obs).to(device))
                 ae_indx_batch = torch.randint(low=0, high=current_ae_buffer_size,
                                               size=(args.safety_buffer_size,))
                 unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]

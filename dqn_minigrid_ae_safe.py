@@ -439,7 +439,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
         for idx, term in enumerate(terminations):
             if term:
-                unsafe_obs_buffer[buffer_ae_indx] = obs_embedding[idx]
+                unsafe_obs_buffer[buffer_ae_indx] = obs_embedding[idx].detach()
                 buffer_ae_indx = (buffer_ae_indx + 1) % args.safety_buffer_size
                 ae_buffer_is_full = ae_buffer_is_full or buffer_ae_indx == 0
 
