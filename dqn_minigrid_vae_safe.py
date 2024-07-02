@@ -541,7 +541,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
     if args.plot_state_heatmap:
         run_path = f"runs/{run_name}"
-        state_cnt_recorder.save_to(f"{run_path}/state_heatmap.npy")
+        state_cnt_recorder.save_to(f"{run_path}/state_heatmap.npz")
         state_cnt_recorder.get_figure_log_scale()
         import matplotlib.pyplot as plt
 
