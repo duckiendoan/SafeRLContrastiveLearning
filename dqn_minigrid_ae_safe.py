@@ -15,7 +15,7 @@ import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
-from utils import TransposeImageWrapper, StateRecordingWrapper
+from utils import TransposeImageWrapper, StateRecordingWrapper, SafetyCheckWrapper
 
 
 @dataclass
@@ -136,6 +136,7 @@ def make_env(env_id, seed, idx, capture_video, run_name):
                 env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
             if args.plot_state_heatmap:
                 env = StateRecordingWrapper(env)
+            env = SafetyCheckWrapper(env)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env.action_space.seed(seed)
 
@@ -368,6 +369,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     unsafe_obs_buffer = torch.zeros((args.safety_buffer_size, args.ae_dim)).float().to(device)
     buffer_ae_indx = 0
     ae_buffer_is_full = False
+    confusion_matrix = np.zeros((2, 2), dtype=np.int32)
 
     start_time = time.time()
     # TRY NOT TO MODIFY: start the game
@@ -380,12 +382,15 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
                                   global_step)
         obs_embedding = encoder(torch.Tensor(obs).to(device))
+        predicted_action_safety = 1
+
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
             # obs_embedding = encoder(torch.Tensor(obs).to(device))
             q_values = q_network(obs_embedding)
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
+        true_action_safety = envs.call('check_safety', actions[0])[0]
 
         # Safe interference
         with torch.no_grad():
@@ -404,10 +409,11 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     mean_value = safe_q_values.mean(dim=1).cpu().item()
                     action_value = safe_q_values[:, actions[0]].cpu().item()
                     if action_value - mean_value < args.safety_threshold:
+                        predicted_action_safety = 0
                         safe_actions = torch.argwhere(safe_q_values > (mean_value + args.safety_threshold)).cpu()
                         actions = np.array([np.random.choice(safe_actions[:, 1])])
                     writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
-
+        confusion_matrix[predicted_action_safety, true_action_safety] += 1
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
 
@@ -418,6 +424,12 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                    writer.add_scalar("charts/precision",
+                                      confusion_matrix[0][0] / (confusion_matrix.sum(axis=1)[0] + 1e-7),
+                                      global_step)
+                    writer.add_scalar("charts/recall",
+                                      confusion_matrix[0][0] / (confusion_matrix.sum(axis=0)[0] + 1e-7),
+                                      global_step)
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
         real_next_obs = next_obs.copy()

@@ -10,6 +10,18 @@ from stable_baselines3.common.buffers import DictReplayBuffer
 from PIL import Image
 from utils import SafetyAwareObservationWrapper
 
+class TestWrapper2(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def check_safety(self, action):
+        front_cell = self.grid.get(*self.front_pos)
+        going_to_death = (
+            action == self.actions.forward
+            and front_cell is not None
+            and front_cell.type == 'lava'
+        )
+        return 1 - going_to_death
 
 class TestWrapper(gym.Wrapper):
     def __init__(self, env):
@@ -79,12 +91,14 @@ if __name__ == '__main__':
         env = minigrid.wrappers.RGBImgPartialObsWrapper(env)
         env = minigrid.wrappers.ImgObsWrapper(env)
         env = SafetyAwareObservationWrapper(env)
+        env = TestWrapper2(env)
 
         return env
 
     envs = gym.vector.SyncVectorEnv(
-        [make_env for i in range(1)],
+        [make_env for i in range(2)],
     )
+    # print(envs.get_attr('actions'))
     rb = DictReplayBuffer(
         20,
         envs.single_observation_space,
@@ -93,6 +107,7 @@ if __name__ == '__main__':
     )
     obs, info = envs.reset()
 
+    print(5, envs.call('check_safety', np.array([2])))
     print(obs['image'].shape)
     print(envs.single_observation_space['image'])
 
@@ -109,19 +124,19 @@ if __name__ == '__main__':
             if c is not None and c.type == 'lava':
                 closest_lava = (i, j)
 
-    for i in range(20):
-        # actions = np.random.randint(envs.single_action_space.n, size=1)
-        actions = np.array([get_action(envs.get_attr('agent_pos')[0], envs.get_attr('agent_dir')[0], closest_lava)])
-        next_obs, reward, terminated, truncated, infos = envs.step(actions)
-        if "final_info" in infos:
-            for idx, info in enumerate(infos['final_info']):
-                print(f"{truncated=}, {terminated=}")
-                obs['unsafe'][idx] = info['unsafe']
-            # print(obs)
-        rb.add(obs, next_obs, actions, reward, truncated, infos)
-        obs = next_obs
-
-    print(rb.sample(5).actions.shape)
-    print(rb.sample(5).observations['unsafe'].dtype)
+    # for i in range(20):
+    #     # actions = np.random.randint(envs.single_action_space.n, size=1)
+    #     actions = np.array([get_action(envs.get_attr('agent_pos')[0], envs.get_attr('agent_dir')[0], closest_lava)])
+    #     next_obs, reward, terminated, truncated, infos = envs.step(actions)
+    #     if "final_info" in infos:
+    #         for idx, info in enumerate(infos['final_info']):
+    #             print(f"{truncated=}, {terminated=}")
+    #             obs['unsafe'][idx] = info['unsafe']
+    #         # print(obs)
+    #     rb.add(obs, next_obs, actions, reward, truncated, infos)
+    #     obs = next_obs
+    #
+    # print(rb.sample(5).actions.shape)
+    # print(rb.sample(5).observations['unsafe'].dtype)
     # print(rb.sample(5).observations)
 

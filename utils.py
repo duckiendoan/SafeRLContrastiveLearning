@@ -7,6 +7,21 @@ from gymnasium.core import WrapperObsType, ObsType, WrapperActType
 from minigrid.core.world_object import Lava
 import seaborn as sns
 
+
+class SafetyCheckWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+    def check_safety(self, action):
+        front_cell = self.grid.get(*self.front_pos)
+        going_to_death = (
+            action == self.actions.forward
+            and front_cell is not None
+            and front_cell.type == 'lava'
+        )
+        return 1 - going_to_death
+
+
 class SafetyAwareObservationWrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
