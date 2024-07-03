@@ -400,14 +400,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 ae_indx_batch = torch.randint(low=0, high=current_ae_buffer_size,
                                               size=(current_batch_size,))
                 unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]
-                assert unsafe_obs_batch.shape[0] == current_batch_size * obs_embedding.shape[0]
-                assert unsafe_obs_batch.shape[1] == obs_embedding.shape[1]
                 latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding, dim=1).mean().detach().cpu().numpy()
                 writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
-                current_unsafe_buffer = unsafe_obs_buffer[:current_ae_buffer_size]
-                mean_dist = torch.cdist(current_unsafe_buffer, current_unsafe_buffer).mean()
-                writer.add_scalar('charts/mean_latent_distance', mean_dist.item(), global_step)
-                if latent_dist.item() < min(args.max_latent_dist, mean_dist.item()) and random.random() < args.prior_prob:
+
+                if latent_dist.item() < args.max_latent_dist and random.random() < args.prior_prob:
                     safe_q_values = safe_q_network(obs_embedding)
                     mean_value = safe_q_values.mean(dim=1).cpu().item()
                     action_value = safe_q_values[:, actions[0]].cpu().item()
@@ -427,10 +423,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                    writer.add_scalar("charts/precision",
+                    writer.add_scalar("metrics/precision",
                                       confusion_matrix[0][0] / (confusion_matrix.sum(axis=1)[0] + 1e-7),
                                       global_step)
-                    writer.add_scalar("charts/recall",
+                    writer.add_scalar("metrics/recall",
                                       confusion_matrix[0][0] / (confusion_matrix.sum(axis=0)[0] + 1e-7),
                                       global_step)
 

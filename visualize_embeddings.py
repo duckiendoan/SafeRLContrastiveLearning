@@ -90,7 +90,8 @@ if __name__ == '__main__':
         # Show plot in browser
         fig.show()
     else:
-        ax = sns.scatterplot(data=df, x='TSNE1', y='TSNE2', hue='label')
+        palette = {"safe": "C0", "unsafe": "C1", "death": "C2"}
+        ax = sns.scatterplot(data=df, x='TSNE1', y='TSNE2', hue='label', palette=palette)
         plt.title('t-SNE visualization')
         plt.savefig(f't-SNE_{args.env_id}_{args.seed}.png')
         plt.show()

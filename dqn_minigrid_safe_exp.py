@@ -355,7 +355,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     unsafe_obs_buffer = torch.zeros((args.safety_buffer_size, args.ae_dim)).float().to(device)
     buffer_ae_indx = 0
     ae_buffer_is_full = False
-    confusion_matrix = np.zeros((2, 2), dtype=np.int32)
+    action_confusion_matrix = np.zeros((2, 2), dtype=np.int32)
+    state_confusion_matrix = np.zeros((2, 2), dtype=np.int32)
 
     start_time = time.time()
     # TRY NOT TO MODIFY: start the game
@@ -368,13 +369,16 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
                                   global_step)
         predicted_action_safety = 1
+        predicted_state_safety = 1
 
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
             q_values = q_network(torch.Tensor(obs).to(device))
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
-        true_action_safety = envs.call('check_safety', actions[0])[0]
+
+        true_state_safety = envs.call('check_safety', 2)[0]
+        true_action_safety = true_state_safety * int(actions[0] == 2)
 
         # Safe interference
         with torch.no_grad():
@@ -385,12 +389,11 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 ae_indx_batch = torch.randint(low=0, high=current_ae_buffer_size,
                                               size=(current_batch_size,))
                 unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]
-                assert unsafe_obs_batch.shape[0] == current_batch_size * obs_embedding.shape[0]
-                assert unsafe_obs_batch.shape[1] == obs_embedding.shape[1]
                 latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding, dim=1).mean().detach().cpu().numpy()
                 writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
 
                 if latent_dist.item() < args.max_latent_dist and random.random() < args.prior_prob:
+                    predicted_state_safety = 0
                     safe_q_values = safe_q_network(torch.Tensor(obs).to(device))
                     mean_value = safe_q_values.mean(dim=1).cpu().item()
                     action_value = safe_q_values[:, actions[0]].cpu().item()
@@ -399,7 +402,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                         safe_actions = torch.argwhere(safe_q_values > (mean_value + args.safety_threshold)).cpu()
                         actions = np.array([np.random.choice(safe_actions[:, 1])])
                     writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
-        confusion_matrix[predicted_action_safety, true_action_safety] += 1
+        action_confusion_matrix[predicted_action_safety, true_action_safety] += 1
+        state_confusion_matrix[predicted_state_safety, true_state_safety] += 1
+
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
 
@@ -410,11 +415,17 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                    writer.add_scalar("charts/precision",
-                                      confusion_matrix[0][0] / (confusion_matrix.sum(axis=1)[0] + 1e-7),
+                    writer.add_scalar("metrics/action_precision",
+                                      action_confusion_matrix[0][0] / (action_confusion_matrix.sum(axis=1)[0] + 1e-7),
                                       global_step)
-                    writer.add_scalar("charts/recall",
-                                      confusion_matrix[0][0] / (confusion_matrix.sum(axis=0)[0] + 1e-7),
+                    writer.add_scalar("metrics/action_recall",
+                                      action_confusion_matrix[0][0] / (action_confusion_matrix.sum(axis=0)[0] + 1e-7),
+                                      global_step)
+                    writer.add_scalar("metrics/state_precision",
+                                      state_confusion_matrix[0][0] / (state_confusion_matrix.sum(axis=1)[0] + 1e-7),
+                                      global_step)
+                    writer.add_scalar("metrics/state_recall",
+                                      state_confusion_matrix[0][0] / (state_confusion_matrix.sum(axis=0)[0] + 1e-7),
                                       global_step)
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
@@ -503,8 +514,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 if args.plot_state_heatmap:
                     writer.add_figure("figures/state_heatmap",
                                       state_cnt_recorder.get_figure_log_scale(), global_step)
-                    writer.add_figure("figures/confusion_matrix",
-                                      plot_confusion_matrix(confusion_matrix), global_step)
+                    writer.add_figure("figures/action_confusion_matrix",
+                                      plot_confusion_matrix(action_confusion_matrix), global_step)
+                    writer.add_figure("figures/state_confusion_matrix",
+                                      plot_confusion_matrix(state_confusion_matrix), global_step)
 
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
