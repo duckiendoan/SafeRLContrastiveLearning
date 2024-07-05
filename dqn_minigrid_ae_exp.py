@@ -330,6 +330,14 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         handle_timeout_termination=False,
     )
 
+    unsafe_rb = DictReplayBuffer(
+        args.buffer_size,
+        envs.single_observation_space,
+        envs.single_action_space,
+        device,
+        handle_timeout_termination=False,
+    )
+
     start_time = time.time()
     # TRY NOT TO MODIFY: start the game
     obs, _ = envs.reset(seed=args.seed)
@@ -365,7 +373,11 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         for idx, trunc in enumerate(truncations):
             if trunc:
                 real_next_obs[idx] = infos["final_observation"][idx]
-        rb.add(obs, real_next_obs, actions, rewards, terminations, infos)
+
+        if obs['unsafe'][0] == 1:
+            unsafe_rb.add(obs, real_next_obs, actions, rewards, terminations, infos)
+        else:
+            rb.add(obs, real_next_obs, actions, rewards, terminations, infos)
 
         # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
         obs = next_obs
@@ -397,9 +409,14 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 encoder_optim.step()
 
             if global_step % args.vae_training_frequency == 0:
-                data = rb.sample(args.ae_batch_size)
-                unsafe = 2 * data.observations['unsafe'].float() - 1
-                latent = encoder(data.observations['image'])
+                unsafe_batch_size = min(args.ae_batch_size // 2, unsafe_rb.size())
+                data = rb.sample(args.ae_batch_size - unsafe_batch_size)
+                data_unsafe = unsafe_rb.sample(unsafe_batch_size)
+
+                data_observations = torch.cat([data.observations['image'], data_unsafe.observations['image']], dim=0)
+                data_safety = torch.cat([data.observations['unsafe'], data_unsafe.observations['unsafe']], dim=0)
+                unsafe = 2 * data_safety.float() - 1
+                latent = encoder(data_observations)
                 reconstruction = decoder(latent)
 
                 assert encoder.outputs['obs'].shape == reconstruction.shape
@@ -437,7 +454,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
                     # log
                     writer.add_image('image/AE reconstruction', save_reconstruction.type(torch.uint8), global_step)
-                    writer.add_image('image/original', data.observations['image'][0].cpu().type(torch.uint8), global_step)
+                    writer.add_image('image/original', data.observations['image'][0].cpu().type(torch.uint8),
+                                     global_step)
                     writer.add_image('image/AE target', ae_target.type(torch.uint8), global_step)
 
                 encoder_optim.zero_grad()
