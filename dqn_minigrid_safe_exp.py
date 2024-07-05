@@ -378,7 +378,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
 
         true_state_safety = envs.call('check_safety', 2)[0]
-        true_action_safety = true_state_safety * int(actions[0] == 2)
+        true_action_safety = 1 - ((1 - true_state_safety) * int(actions[0] == 2))
 
         # Safe interference
         with torch.no_grad():
