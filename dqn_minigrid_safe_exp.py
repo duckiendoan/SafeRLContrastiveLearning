@@ -389,7 +389,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 ae_indx_batch = torch.randint(low=0, high=current_ae_buffer_size,
                                               size=(current_batch_size,))
                 unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]
-                latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding, dim=1).mean().detach().cpu().numpy()
+                latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding, dim=1).min().detach().cpu().numpy()
                 writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
 
                 if latent_dist.item() < args.max_latent_dist and random.random() < args.prior_prob:
@@ -435,7 +435,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 real_next_obs[idx] = infos["final_observation"][idx]
 
         for idx, term in enumerate(terminations):
-            if term:
+            if term and rewards[0] < 0.001:
                 unsafe_obs_buffer[buffer_ae_indx] = obs_embedding[idx]
                 buffer_ae_indx = (buffer_ae_indx + 1) % args.safety_buffer_size
                 ae_buffer_is_full = ae_buffer_is_full or buffer_ae_indx == 0
