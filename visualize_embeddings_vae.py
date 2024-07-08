@@ -1,22 +1,30 @@
+import random
 import gymnasium as gym
 import minigrid
-from dataclasses import dataclass
-import numpy as np
-import random
 import tyro
+from dataclasses import dataclass
+from sklearn.manifold import TSNE
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import pandas as pd
 import torch
 import torch.nn as nn
+
 
 @dataclass
 class Args:
     ae_path: str = './encoder.pth'
     """path to auto-encoder"""
+    ae_dim: int = 50
+    """the dimensionality of the latent space"""
     env_id: str = "MiniGrid-LavaCrossingS9N1-v0"
     """the id of the environment"""
     seed: int = 1
     """seed of the experiment"""
-    ae_dim: int = 50
-    """the dimensionality of the latent space"""
+    plotly: bool = False
+    """use plotly instead of seaborn"""
+
 
 OUT_DIM = {2: 39, 4: 35, 6: 31}
 
@@ -134,41 +142,6 @@ class PixelDecoder(nn.Module):
         return obs
 
 
-AGENT_DIRS = {
-    0: 'right',
-    1: 'down',
-    2: 'left',
-    3: 'up'
-}
-
-
-def get_action(agent_pos, agent_dir, goalPos):
-    dx, dy = goalPos[0] - agent_pos[0], goalPos[1] - agent_pos[1]
-    # Left
-    if dx < 0:
-        if AGENT_DIRS[agent_dir] != 'left':
-            return 0
-        else:
-            return 2
-    elif dx > 0:
-        if AGENT_DIRS[agent_dir] != 'right':
-            return 0
-        else:
-            return 2
-
-    if dy < 0:
-        if AGENT_DIRS[agent_dir] != 'up':
-            return 0
-        else:
-            return 2
-
-    elif dy > 0:
-        if AGENT_DIRS[agent_dir] != 'down':
-            return 0
-        else:
-            return 2
-
-
 if __name__ == '__main__':
     args = tyro.cli(Args)
     # TRY NOT TO MODIFY: seeding
@@ -186,8 +159,8 @@ if __name__ == '__main__':
     env = minigrid.wrappers.NoDeath(env, no_death_types=('lava',))
     env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
     print(env.observation_space.shape)
-
     pretrained_ae = torch.load(args.ae_path, map_location=device)
+
     encoder = PixelEncoder(env.observation_space.shape, args.ae_dim).to(device)
     encoder.load_state_dict(pretrained_ae['encoder'])
     decoder = PixelDecoder(env.observation_space.shape, args.ae_dim).to(device)
@@ -196,6 +169,9 @@ if __name__ == '__main__':
     obs, info = env.reset()
     grid = env.unwrapped.grid
     observations = np.zeros(((grid.width - 2) * (grid.height - 2) * 4,) + env.observation_space.shape, dtype=np.uint8)
+    labels = ['safe' for _ in range((grid.width - 2) * (grid.height - 2) * 4)]
+    names = ['i, j, dir' for _ in range((grid.width - 2) * (grid.height - 2) * 4)]
+
     for i in range(grid.width):
         for j in range(grid.height):
             c = grid.get(i, j)
@@ -209,8 +185,16 @@ if __name__ == '__main__':
                     assert obs_idx % 4 == dir
                     assert (obs_idx // 4) % (grid.height - 2) == j - 1
                     assert (obs_idx // (4 * (grid.height - 2))) == i - 1
+                    next_c = grid.get(*env.unwrapped.front_pos)
+                    if c is not None and c.type == 'lava':
+                        labels[obs_idx] = 'death'
+                    if c is None and next_c is not None and next_c.type == 'lava':
+                        labels[obs_idx] = 'unsafe'
+                    names[obs_idx] = f'{i}, {j}, {dir}'
+
 
     observations = observations.transpose(0, 3, 1, 2)
+    observations = np.ascontiguousarray(observations)
     embeddings, mu, log_var = encoder.sample(torch.Tensor(observations).to(device))
     reconstruction = decoder(embeddings)
     assert encoder.outputs['obs'].shape == reconstruction.shape
@@ -219,5 +203,38 @@ if __name__ == '__main__':
 
     print(f'Reconstruction loss: {reconstruct_loss.item()}')
     print(f'KL loss: {kl_loss.item()}')
-    cpu_embeddings = embeddings.detach().cpu().numpy()
-    np.save(f'{args.env_id}__{args.seed}__obs_embeddings.npy', cpu_embeddings)
+    X = embeddings.detach().cpu().numpy()
+
+    tsne = TSNE(n_components=2, random_state=42)
+    X_tsne = tsne.fit_transform(X)
+    print(X_tsne.shape)
+    print(tsne.kl_divergence_)
+    df = pd.DataFrame(X_tsne, columns=['TSNE1', 'TSNE2'])
+    df['label'] = labels
+    df['name'] = names
+    print(df['label'].value_counts())
+
+    if args.plotly:
+        import plotly.express as px
+
+        fig = px.scatter(df, x='TSNE1', y='TSNE2', color='label', title='t-SNE visualization', hover_data=['name'])
+
+        # Update layout to improve hover information
+        fig.update_traces(marker=dict(size=10, opacity=0.8),
+                          selector=dict(mode='markers+text'))
+
+        fig.update_layout(
+            hovermode='closest'
+        )
+
+        # Save plot to an HTML file
+        fig.write_html('tsne_visualization_with_index.html')
+
+        # Show plot in browser
+        fig.show()
+    else:
+        palette = {"safe": "C0", "unsafe": "C1", "death": "C2"}
+        ax = sns.scatterplot(data=df, x='TSNE1', y='TSNE2', hue='label', palette=palette)
+        plt.title('t-SNE visualization')
+        plt.savefig(f't-SNE_{args.env_id}_{args.seed}.png')
+        plt.show()
