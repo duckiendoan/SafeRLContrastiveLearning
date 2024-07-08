@@ -430,7 +430,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 n_negative = torch.sum(dist_weights < 0)
                 weights = torch.where(dist_weights > 0, 1 / n_positive, 1 / n_negative)
                 min_dist = torch.where(dist_weights >= 0, 0.0, args.min_latent_distance)
-                latent_dist_loss = 0.5 * torch.sum(((latent_dist - min_dist) ** 2) * weights)
+                latent_dist = torch.where(dist_weights >= 0, latent_dist ** 2, torch.clamp(args.min_latent_distance - latent_dist, min=0.0) ** 2)
+                latent_dist_loss = 0.5 * torch.sum(latent_dist * weights)
+                # latent_dist_loss = 0.5 * torch.sum(((latent_dist - min_dist) ** 2) * weights)
                 loss = args.reconstruct_loss_coef * reconstruct_loss + args.latent_dist_coef * latent_dist_loss
 
                 if global_step % 100 == 0:
