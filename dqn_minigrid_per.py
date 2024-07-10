@@ -226,7 +226,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         for idx, trunc in enumerate(truncations):
             if trunc:
                 real_next_obs[idx] = infos["final_observation"][idx]
-        rb.add(obs, real_next_obs, actions, rewards, terminations, infos)
+        rb.add(obs, real_next_obs, actions, rewards, terminations)
 
         # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
         obs = next_obs
@@ -239,8 +239,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     target_max, _ = target_network(data.next_observations).max(dim=1)
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                 old_val = q_network(data.observations).gather(1, data.actions).squeeze()
-
-                loss = torch.mean(((td_target - old_val) ** 2) * data.weights)
+                sampling_weights = torch.as_tensor(data.weights).to(device)
+                assert sampling_weights.shape == td_target.shape
+                loss = torch.mean(((td_target - old_val) ** 2) * sampling_weights)
                 td_error = torch.abs(td_target - old_val).detach()
 
                 if global_step % 100 == 0:
