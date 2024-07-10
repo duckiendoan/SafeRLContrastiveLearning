@@ -130,10 +130,6 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
     return max(slope * t + start_e, end_e)
 
 
-def exponential_annealing_schedule(n, rate):
-    return 1 - np.exp(-rate * n)
-
-
 if __name__ == "__main__":
     import stable_baselines3 as sb3
 
@@ -202,7 +198,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
                                   global_step)
-        beta = exponential_annealing_schedule(global_step, 1e-2)
+        beta = 0.5
 
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
@@ -254,7 +250,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                rb.update_weights(data.indices, td_error.cpu().numpy())
+                rb.update_weights(data.indices, td_error.cpu().numpy() + 1e-5)
 
             # update target network
             if global_step % args.target_network_frequency == 0:

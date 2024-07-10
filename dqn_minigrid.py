@@ -243,6 +243,15 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                grads = [
+                    param.grad.detach().flatten()
+                    for param in q_network.parameters()
+                    if param.grad is not None
+                ]
+                norm = torch.cat(grads).norm()
+                if global_step % 100 == 0:
+                    writer.add_scalar("losses/grad_norm", norm.item(), global_step)
+
 
             # update target network
             if global_step % args.target_network_frequency == 0:
