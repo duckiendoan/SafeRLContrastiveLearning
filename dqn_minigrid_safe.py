@@ -273,7 +273,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
             if global_step % (args.total_timesteps // 10) == 0:
                 if args.plot_state_heatmap:
-                    writer.add_figure("state_distribution/heatmap",
+                    writer.add_figure("figures/state_heatmap",
                                       state_cnt_recorder.get_figure_log_scale(), global_step)
 
     if args.save_model:
