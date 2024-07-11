@@ -14,7 +14,7 @@ import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 import minigrid
-from utils import TransposeImageWrapper, StateRecordingWrapper
+from utils import TransposeImageWrapper, StateRecordingWrapper, SafetyCheckWrapper, plot_confusion_matrix
 
 
 @dataclass
@@ -196,6 +196,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         device,
         handle_timeout_termination=False,
     )
+    action_confusion_matrix = np.zeros((2, 2), dtype=np.int32)
     start_time = time.time()
 
     # TRY NOT TO MODIFY: start the game
@@ -207,11 +208,13 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
                                   global_step)
+        predicted_action_safety = 1
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
             q_values = q_network(torch.Tensor(obs).to(device))
             actions = torch.argmax(q_values, dim=1).cpu().numpy()
+        true_action_safety = envs.call('check_safety', actions[0])[0]
 
         if random.random() < args.prior_prob:
             # Safety check
@@ -220,11 +223,13 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 mean_value = safe_q_values.mean(dim=1).cpu().item()
                 action_value = safe_q_values[:, actions[0]].cpu().item()
                 if action_value - mean_value < args.safety_threshold:
+                    predicted_action_safety = 0
                     safe_actions = torch.argwhere(safe_q_values > (mean_value + args.safety_threshold)).cpu()
                     actions = np.array([np.random.choice(safe_actions[:, 1])])
                 if args.debug:
                     writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
 
+        action_confusion_matrix[predicted_action_safety, true_action_safety] += 1
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
 
@@ -235,6 +240,12 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                    writer.add_scalar("metrics/action_precision",
+                                      action_confusion_matrix[0][0] / (action_confusion_matrix.sum(axis=1)[0] + 1e-7),
+                                      global_step)
+                    writer.add_scalar("metrics/action_recall",
+                                      action_confusion_matrix[0][0] / (action_confusion_matrix.sum(axis=0)[0] + 1e-7),
+                                      global_step)
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
         real_next_obs = next_obs.copy()
@@ -279,7 +290,11 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 if args.plot_state_heatmap:
                     writer.add_figure("figures/state_heatmap",
                                       state_cnt_recorder.get_figure_log_scale(), global_step)
+                    writer.add_figure("figures/action_confusion_matrix",
+                                      plot_confusion_matrix(action_confusion_matrix), global_step)
 
+    writer.add_figure("figures/action_confusion_matrix",
+                      plot_confusion_matrix(action_confusion_matrix), global_step)
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
         torch.save(q_network.state_dict(), model_path)

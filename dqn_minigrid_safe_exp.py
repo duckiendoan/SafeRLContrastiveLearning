@@ -524,6 +524,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     writer.add_figure("figures/state_confusion_matrix",
                                       plot_confusion_matrix(state_confusion_matrix), global_step)
 
+    writer.add_figure("figures/action_confusion_matrix",
+                      plot_confusion_matrix(action_confusion_matrix), global_step)
+    writer.add_figure("figures/state_confusion_matrix",
+                      plot_confusion_matrix(state_confusion_matrix), global_step)
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
         torch.save(q_network.state_dict(), model_path)
