@@ -406,7 +406,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 data = rb.sample(args.batch_size)
                 with torch.no_grad():
                     next_obs_embeddings = encoder.sample(data.next_observations, deterministic=args.deterministic_latent)[0]
-                    target_max, _ = target_network(next_obs_embeddings).max(dim=1)
+                    # target_max, _ = target_network(next_obs_embeddings).max(dim=1)
+                    target_actions = q_network(next_obs_embeddings).argmax(dim=1, keepdim=True)
+                    target_max = target_network(next_obs_embeddings).gather(1, target_actions).flatten()
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                 obs_embeddings = encoder.sample(data.observations, deterministic=args.deterministic_latent)[0]
                 old_val = q_network(obs_embeddings).gather(1, data.actions).squeeze()

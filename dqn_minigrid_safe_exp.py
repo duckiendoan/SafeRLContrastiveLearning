@@ -118,6 +118,8 @@ class Args:
     """the batch size for sampling from buffer"""
     max_latent_dist: float = 4.0
     """the minimum latent distance to filter unsafe states"""
+    debug: bool = False
+    """whether to log debugging metrics"""
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -390,7 +392,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                                               size=(current_batch_size,))
                 unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]
                 latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding, dim=1).min().detach().cpu().numpy()
-                writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
+                if args.debug:
+                    writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
 
                 if latent_dist.item() < args.max_latent_dist and random.random() < args.prior_prob:
                     predicted_state_safety = 0
@@ -401,7 +404,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                         predicted_action_safety = 0
                         safe_actions = torch.argwhere(safe_q_values > (mean_value + args.safety_threshold)).cpu()
                         actions = np.array([np.random.choice(safe_actions[:, 1])])
-                    writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
+                    if args.debug:
+                        writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
         action_confusion_matrix[predicted_action_safety, true_action_safety] += 1
         state_confusion_matrix[predicted_state_safety, true_state_safety] += 1
 
@@ -450,7 +454,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             if global_step % args.train_frequency == 0:
                 data = rb.sample(args.batch_size)
                 with torch.no_grad():
-                    target_max, _ = target_network(data.next_observations).max(dim=1)
+                    target_actions = q_network(data.next_observations).argmax(dim=1, keepdim=True)
+                    target_max = target_network(data.next_observations).gather(1, target_actions).flatten()
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                 old_val = q_network(data.observations).gather(1, data.actions).squeeze()
                 loss = F.mse_loss(td_target, old_val)

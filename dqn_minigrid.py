@@ -228,7 +228,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             if global_step % args.train_frequency == 0:
                 data = rb.sample(args.batch_size)
                 with torch.no_grad():
-                    target_max, _ = target_network(data.next_observations).max(dim=1)
+                    target_actions = q_network(data.next_observations).argmax(dim=1, keepdim=True)
+                    target_max = target_network(data.next_observations).gather(1, target_actions).flatten()
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                 old_val = q_network(data.observations).gather(1, data.actions).squeeze()
                 loss = F.mse_loss(td_target, old_val)
@@ -243,15 +244,6 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                grads = [
-                    param.grad.detach().flatten()
-                    for param in q_network.parameters()
-                    if param.grad is not None
-                ]
-                norm = torch.cat(grads).norm()
-                if global_step % 100 == 0:
-                    writer.add_scalar("losses/grad_norm", norm.item(), global_step)
-
 
             # update target network
             if global_step % args.target_network_frequency == 0:

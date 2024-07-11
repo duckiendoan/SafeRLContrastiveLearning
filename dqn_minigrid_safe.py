@@ -81,6 +81,8 @@ class Args:
     """the probability to use Q prior"""
     plot_state_heatmap: bool = True
     """whether to plot state heatmap"""
+    debug: bool = False
+    """whether to log debugging metrics"""
 
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -220,7 +222,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 if action_value - mean_value < args.safety_threshold:
                     safe_actions = torch.argwhere(safe_q_values > (mean_value + args.safety_threshold)).cpu()
                     actions = np.array([np.random.choice(safe_actions[:, 1])])
-                writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
+                if args.debug:
+                    writer.add_scalar("charts/action_safety", action_value - mean_value, global_step)
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, terminations, truncations, infos = envs.step(actions)
@@ -248,7 +251,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             if global_step % args.train_frequency == 0:
                 data = rb.sample(args.batch_size)
                 with torch.no_grad():
-                    target_max, _ = target_network(data.next_observations).max(dim=1)
+                    target_actions = q_network(data.next_observations).argmax(dim=1, keepdim=True)
+                    target_max = target_network(data.next_observations).gather(1, target_actions).flatten()
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                 old_val = q_network(data.observations).gather(1, data.actions).squeeze()
                 loss = F.mse_loss(td_target, old_val)
