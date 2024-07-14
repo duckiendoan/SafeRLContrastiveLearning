@@ -381,6 +381,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     ae_buffer_is_full = False
     action_confusion_matrix = np.zeros((2, 2), dtype=np.int32)
     state_confusion_matrix = np.zeros((2, 2), dtype=np.int32)
+    num_violations = 0
 
     start_time = time.time()
     # TRY NOT TO MODIFY: start the game
@@ -444,6 +445,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                    writer.add_scalar("charts/cumulative_violations_count", num_violations, global_step)
+
                     writer.add_scalar("metrics/action_precision",
                                       action_confusion_matrix[0][0] / (action_confusion_matrix.sum(axis=1)[0] + 1e-7),
                                       global_step)
@@ -465,6 +468,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
         for idx, term in enumerate(terminations):
             if term and rewards[0] < 0.001:
+                num_violations += 1
                 unsafe_obs_buffer[buffer_ae_indx] = obs_embedding[idx]
                 buffer_ae_indx = (buffer_ae_indx + 1) % args.safety_buffer_size
                 ae_buffer_is_full = ae_buffer_is_full or buffer_ae_indx == 0
