@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
+from buffers import PrioritizedReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 import minigrid
 from utils import TransposeImageWrapper, StateRecordingWrapper, SafetyCheckWrapper, plot_confusion_matrix
@@ -73,14 +74,22 @@ class Args:
     """the frequency of training"""
     reseed: bool = False
     """whether to fix seed on environment reset"""
+    plot_state_heatmap: bool = True
+    """whether to plot state heatmap"""
+    per: bool = True
+    """whether to use Prioritized Experience Replay (PER)"""
+    per_alpha: float = 0.5
+    """alpha coefficient in PER"""
+    per_starting_beta: float = 0.4
+    """starting beta value in linear scheduling"""
+
+    # Safe Q-Learning arguments
     safe_q: str = './'
     """path to the safe Q function"""
     safety_threshold: float = -0.05
     """the Q-function difference threshold at which an action is deemed safe"""
     prior_prob: float = 0.95
     """the probability to use Q prior"""
-    plot_state_heatmap: bool = True
-    """whether to plot state heatmap"""
     debug: bool = False
     """whether to log debugging metrics"""
 
@@ -102,6 +111,7 @@ def make_env(env_id, seed, idx, capture_video, run_name):
                 env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
             if args.plot_state_heatmap:
                 env = StateRecordingWrapper(env)
+            env = SafetyCheckWrapper(env)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env.action_space.seed(seed)
 
@@ -134,6 +144,11 @@ class QNetwork(nn.Module):
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
     slope = (end_e - start_e) / duration
     return max(slope * t + start_e, end_e)
+
+
+def beta_linear_schedule(start_e: float, end_e: float, duration: int, t: int):
+    slope = (end_e - start_e) / duration
+    return min(slope * t + start_e, end_e)
 
 
 if __name__ == "__main__":
@@ -196,6 +211,15 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         device,
         handle_timeout_termination=False,
     )
+    if args.per:
+        rb = PrioritizedReplayBuffer(
+            args.buffer_size,
+            args.per_alpha,
+            envs.single_observation_space,
+            envs.single_action_space,
+            device
+        )
+
     action_confusion_matrix = np.zeros((2, 2), dtype=np.int32)
     start_time = time.time()
 
@@ -208,6 +232,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
                                   global_step)
+        beta = beta_linear_schedule(args.per_starting_beta, 1.0, 0.8 * args.total_timesteps,
+                                    global_step)
         predicted_action_safety = 1
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
@@ -260,13 +286,22 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # ALGO LOGIC: training.
         if global_step > args.learning_starts:
             if global_step % args.train_frequency == 0:
-                data = rb.sample(args.batch_size)
+                if args.per:
+                    data = rb.sample(args.batch_size, beta)
+                else:
+                    data = rb.sample(args.batch_size)
                 with torch.no_grad():
                     target_actions = q_network(data.next_observations).argmax(dim=1, keepdim=True)
                     target_max = target_network(data.next_observations).gather(1, target_actions).flatten()
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                 old_val = q_network(data.observations).gather(1, data.actions).squeeze()
-                loss = F.mse_loss(td_target, old_val)
+                if args.per:
+                    sampling_weights = torch.as_tensor(data.weights).to(device)
+                    assert sampling_weights.shape == td_target.shape
+                    loss = torch.mean(((td_target - old_val) ** 2) * sampling_weights)
+                    td_error = torch.abs(td_target - old_val).detach()
+                else:
+                    loss = F.mse_loss(td_target, old_val)
 
                 if global_step % 100 == 0:
                     writer.add_scalar("losses/td_loss", loss, global_step)
@@ -278,6 +313,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                if args.per:
+                    rb.update_weights(data.indices, td_error.cpu().numpy() + 1e-5)
 
             # update target network
             if global_step % args.target_network_frequency == 0:

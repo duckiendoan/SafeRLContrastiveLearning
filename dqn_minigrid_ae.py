@@ -13,6 +13,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
+from buffers import PrioritizedReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
 from utils import TransposeImageWrapper, StateRecordingWrapper
@@ -76,6 +77,12 @@ class Args:
     """whether to fix seed on environment reset"""
     plot_state_heatmap: bool = True
     """whether to plot state heatmap"""
+    per: bool = True
+    """whether to use Prioritized Experience Replay (PER)"""
+    per_alpha: float = 0.5
+    """alpha coefficient in PER"""
+    per_starting_beta: float = 0.4
+    """starting beta value in linear scheduling"""
 
     # VAE arguments
     ae_dim: int = 50
@@ -261,6 +268,11 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
     return max(slope * t + start_e, end_e)
 
 
+def beta_linear_schedule(start_e: float, end_e: float, duration: int, t: int):
+    slope = (end_e - start_e) / duration
+    return min(slope * t + start_e, end_e)
+
+
 if __name__ == "__main__":
     import stable_baselines3 as sb3
 
@@ -329,6 +341,14 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         device,
         handle_timeout_termination=False,
     )
+    if args.per:
+        rb = PrioritizedReplayBuffer(
+            args.buffer_size,
+            args.per_alpha,
+            envs.single_observation_space,
+            envs.single_action_space,
+            device
+        )
 
     start_time = time.time()
     # TRY NOT TO MODIFY: start the game
@@ -340,6 +360,9 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
                                   global_step)
+        beta = beta_linear_schedule(args.per_starting_beta, 1.0, 0.8 * args.total_timesteps,
+                                    global_step)
+
         obs_embedding = encoder(torch.Tensor(obs).to(device))
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
@@ -381,7 +404,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # ALGO LOGIC: training.
         if global_step > args.learning_starts:
             if global_step % args.train_frequency == 0:
-                data = rb.sample(args.batch_size)
+                if args.per:
+                    data = rb.sample(args.batch_size, beta)
+                else:
+                    data = rb.sample(args.batch_size)
                 with torch.no_grad():
                     next_obs_embeddings = encoder(data.next_observations)
                     target_actions = q_network(next_obs_embeddings).argmax(dim=1, keepdim=True)
@@ -389,7 +415,13 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                 obs_embeddings = encoder(data.observations)
                 old_val = q_network(obs_embeddings).gather(1, data.actions).squeeze()
-                loss = F.mse_loss(td_target, old_val)
+                if args.per:
+                    sampling_weights = torch.as_tensor(data.weights).to(device)
+                    assert sampling_weights.shape == td_target.shape
+                    loss = torch.mean(((td_target - old_val) ** 2) * sampling_weights)
+                    td_error = torch.abs(td_target - old_val).detach()
+                else:
+                    loss = F.mse_loss(td_target, old_val)
 
                 if global_step % 100 == 0:
                     writer.add_scalar("losses/td_loss", loss, global_step)
@@ -405,8 +437,15 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 optimizer.step()
                 encoder_optim.step()
 
+                if args.per:
+                    rb.update_weights(data.indices, td_error.cpu().numpy() + 1e-5)
+
             if args.ae_path is None and global_step % args.vae_training_frequency == 0:
-                data = rb.sample(args.ae_batch_size)
+                if args.per:
+                    data = rb.sample_uniform(args.ae_batch_size)
+                else:
+                    data = rb.sample(args.ae_batch_size)
+
                 latent = encoder(data.observations)
                 reconstruction = decoder(latent)
 

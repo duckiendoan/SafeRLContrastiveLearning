@@ -77,6 +77,8 @@ class Args:
     """whether to plot state heatmap"""
     per_alpha: float = 0.5
     """the strength to which PER is applied"""
+    per_starting_beta: float = 0.4
+    """the beta in importance sampling"""
 
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -128,6 +130,11 @@ class QNetwork(nn.Module):
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
     slope = (end_e - start_e) / duration
     return max(slope * t + start_e, end_e)
+
+
+def beta_linear_schedule(start_e: float, end_e: float, duration: int, t: int):
+    slope = (end_e - start_e) / duration
+    return min(slope * t + start_e, end_e)
 
 
 if __name__ == "__main__":
@@ -198,7 +205,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         # ALGO LOGIC: put action logic here
         epsilon = linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps,
                                   global_step)
-        beta = 0.5
+        beta = beta_linear_schedule(args.per_starting_beta, 1.0, 0.8 * args.total_timesteps,
+                                    global_step)
 
         if random.random() < epsilon:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
@@ -222,7 +230,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         for idx, trunc in enumerate(truncations):
             if trunc:
                 real_next_obs[idx] = infos["final_observation"][idx]
-        rb.add(obs, real_next_obs, actions, rewards, terminations)
+        rb.add(obs, real_next_obs, actions, rewards, terminations, infos)
 
         # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
         obs = next_obs

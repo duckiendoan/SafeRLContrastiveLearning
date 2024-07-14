@@ -624,7 +624,7 @@ class PrioritizedReplayBuffer(BaseBuffer):
         self._it_min = MinSegmentTree(it_capacity)
         self._max_weight = 1.0
 
-    def add(self, obs: np.ndarray, next_obs: np.ndarray, action: np.ndarray, reward: np.ndarray, done: np.ndarray) -> None:
+    def add(self, obs: np.ndarray, next_obs: np.ndarray, action: np.ndarray, reward: np.ndarray, done: np.ndarray, infos: dict) -> None:
         # Copy to avoid modification by reference
         self.observations[self.pos] = np.array(obs).copy()
         self.next_observations[self.pos] = np.array(next_obs).copy()
@@ -698,3 +698,37 @@ class PrioritizedReplayBuffer(BaseBuffer):
         self._it_min[batch_inds] = weights**self._alpha
 
         self._max_weight = max(self._max_weight, np.max(weights))
+
+    def sample_uniform(self, batch_size: int, env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
+        """
+        Sample elements from the replay buffer.
+        Custom sampling when using memory efficient variant,
+        as we should not sample the element with index `self.pos`
+        See https://github.com/DLR-RM/stable-baselines3/pull/28#issuecomment-637559274
+
+        :param batch_size: Number of element to sample
+        :param env: associated gym VecEnv
+            to normalize the observations/rewards when sampling
+        :return:
+        """
+        # if not self.optimize_memory_usage:
+        #     return super().sample(batch_size=batch_size, env=env)
+        # Do not sample the element with index `self.pos` as the transitions is invalid
+        # (we use only one array to store `obs` and `next_obs`)
+        if self.full:
+            batch_inds = (np.random.randint(1, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
+        else:
+            batch_inds = np.random.randint(0, self.pos, size=batch_size)
+        return self._get_samples_uniform(batch_inds, env=env)
+
+    def _get_samples_uniform(self, batch_inds: np.ndarray, env: Optional[VecNormalize] = None) -> ReplayBufferSamples:
+        next_obs = self._normalize_obs(self.next_observations[batch_inds, 0, :], env)
+
+        data = (
+            self._normalize_obs(self.observations[batch_inds, 0, :], env),
+            self.actions[batch_inds, 0, :],
+            next_obs,
+            self.dones[batch_inds],
+            self._normalize_reward(self.rewards[batch_inds], env),
+        )
+        return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
