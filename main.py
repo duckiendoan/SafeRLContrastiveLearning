@@ -88,7 +88,7 @@ def get_action(agent_pos, agent_dir, goalPos):
 if __name__ == '__main__':
     def make_env():
         env = gym.make('MiniGrid-LavaCrossingS9N1-v0', render_mode='rgb_array')
-        env = minigrid.wrappers.RGBImgPartialObsWrapper(env)
+        env = minigrid.wrappers.RGBImgObsWrapper(env)
         env = minigrid.wrappers.ImgObsWrapper(env)
         env = SafetyAwareObservationWrapper(env)
         env = TestWrapper2(env)
@@ -109,6 +109,8 @@ if __name__ == '__main__':
 
     print(5, envs.call('check_safety', np.array([2])))
     print(obs['image'].shape)
+    print(envs.single_action_space.n)
+    print(isinstance(envs.envs[0], gym.vector.VectorEnv))
     print(envs.single_observation_space['image'])
 
     # im = Image.fromarray(envs.get_attr("render")[0])

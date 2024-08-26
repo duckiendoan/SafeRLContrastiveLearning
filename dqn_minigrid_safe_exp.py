@@ -413,11 +413,13 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             current_ae_buffer_size = args.safety_buffer_size if ae_buffer_is_full else buffer_ae_indx
             current_batch_size = min(args.safety_batch_size, current_ae_buffer_size)
             if current_ae_buffer_size > 3:
-                ae_indx_batch = torch.randint(low=0, high=current_ae_buffer_size,
-                                              size=(current_batch_size,))
-                unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]
-                latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding,
-                                                       dim=1).min().detach().cpu().numpy()
+                # ae_indx_batch = torch.randint(low=0, high=current_ae_buffer_size,
+                #                               size=(current_batch_size,))
+                # unsafe_obs_batch = unsafe_obs_buffer[ae_indx_batch]
+                # latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding,
+                #                                        dim=1).min().detach().cpu().numpy()
+                latent_dist = torch.linalg.vector_norm(unsafe_obs_buffer - obs_embedding,
+                                                       dim=1).topk(k=current_batch_size, largest=False).values.mean().detach().cpu.numpy()
                 if args.debug:
                     writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
 
