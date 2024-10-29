@@ -419,7 +419,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 # latent_dist = torch.linalg.vector_norm(unsafe_obs_batch - obs_embedding,
                 #                                        dim=1).min().detach().cpu().numpy()
                 latent_dist = torch.linalg.vector_norm(unsafe_obs_buffer - obs_embedding,
-                                                       dim=1).topk(k=current_batch_size, largest=False).values.mean().detach().cpu.numpy()
+                                                       dim=1).topk(k=current_batch_size, largest=False).values.mean().detach().cpu().numpy()
                 if args.debug:
                     writer.add_scalar('charts/latent_distance', latent_dist.item(), global_step)
 

@@ -2,7 +2,7 @@ import random
 import gymnasium as gym
 import minigrid
 import tyro
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from sklearn.manifold import TSNE
 import numpy as np
 import seaborn as sns
@@ -24,6 +24,8 @@ class Args:
     """seed of the experiment"""
     plotly: bool = False
     """use plotly instead of seaborn"""
+    env_ids: list[str] = field(default_factory=lambda: [])
+    """multiple environment ids"""
 
 
 OUT_DIM = {2: 39, 4: 35, 6: 31}
@@ -139,68 +141,72 @@ if __name__ == '__main__':
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = True
+    if len(args.env_ids) == 0:
+        args.env_ids.append(args.env_id)
+    dfs = {}
+    for env_id in args.env_ids:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(device)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
+        env = gym.make(env_id, render_mode='rgb_array', max_steps=100)
+        env = minigrid.wrappers.RGBImgObsWrapper(env)
+        env = minigrid.wrappers.ImgObsWrapper(env)
+        env = minigrid.wrappers.NoDeath(env, no_death_types=('lava',))
+        env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
+        print(env.observation_space.shape)
+        pretrained_ae = torch.load(args.ae_path, map_location=device)
 
-    env = gym.make(args.env_id, render_mode='rgb_array', max_steps=100)
-    env = minigrid.wrappers.RGBImgObsWrapper(env)
-    env = minigrid.wrappers.ImgObsWrapper(env)
-    env = minigrid.wrappers.NoDeath(env, no_death_types=('lava',))
-    env = minigrid.wrappers.ReseedWrapper(env, seeds=(args.seed,))
-    print(env.observation_space.shape)
-    pretrained_ae = torch.load(args.ae_path, map_location=device)
+        encoder = PixelEncoder(env.observation_space.shape, args.ae_dim).to(device)
+        encoder.load_state_dict(pretrained_ae['encoder'])
+        decoder = PixelDecoder(env.observation_space.shape, args.ae_dim).to(device)
+        decoder.load_state_dict(pretrained_ae['decoder'])
 
-    encoder = PixelEncoder(env.observation_space.shape, args.ae_dim).to(device)
-    encoder.load_state_dict(pretrained_ae['encoder'])
-    decoder = PixelDecoder(env.observation_space.shape, args.ae_dim).to(device)
-    decoder.load_state_dict(pretrained_ae['decoder'])
+        obs, info = env.reset()
+        grid = env.unwrapped.grid
+        observations = np.zeros(((grid.width - 2) * (grid.height - 2) * 4,) + env.observation_space.shape, dtype=np.uint8)
+        labels = ['safe' for _ in range((grid.width - 2) * (grid.height - 2) * 4)]
+        names = ['i, j, dir' for _ in range((grid.width - 2) * (grid.height - 2) * 4)]
 
-    obs, info = env.reset()
-    grid = env.unwrapped.grid
-    observations = np.zeros(((grid.width - 2) * (grid.height - 2) * 4,) + env.observation_space.shape, dtype=np.uint8)
-    labels = ['safe' for _ in range((grid.width - 2) * (grid.height - 2) * 4)]
-    names = ['i, j, dir' for _ in range((grid.width - 2) * (grid.height - 2) * 4)]
-
-    for i in range(grid.width):
-        for j in range(grid.height):
-            c = grid.get(i, j)
-            if (c is not None and c.type != 'wall') or c is None:
-                env.unwrapped.agent_pos = (i, j)
-                for dir in range(4):
-                    env.unwrapped.agent_dir = dir
-                    obs = env.get_frame(highlight=env.unwrapped.highlight, tile_size=env.tile_size)
-                    obs_idx = (i - 1) * (grid.height - 2) * 4 + (j - 1) * 4 + dir
-                    observations[obs_idx] = obs
-                    assert obs_idx % 4 == dir
-                    assert (obs_idx // 4) % (grid.height - 2) == j - 1
-                    assert (obs_idx // (4 * (grid.height - 2))) == i - 1
-                    next_c = grid.get(*env.unwrapped.front_pos)
-                    if c is not None and c.type == 'lava':
-                        labels[obs_idx] = 'death'
-                    if c is None and next_c is not None and next_c.type == 'lava':
-                        labels[obs_idx] = 'unsafe'
-                    names[obs_idx] = f'{i}, {j}, {dir}'
+        for i in range(grid.width):
+            for j in range(grid.height):
+                c = grid.get(i, j)
+                if (c is not None and c.type != 'wall') or c is None:
+                    env.unwrapped.agent_pos = (i, j)
+                    for dir in range(4):
+                        env.unwrapped.agent_dir = dir
+                        obs = env.get_frame(highlight=env.unwrapped.highlight, tile_size=env.tile_size)
+                        obs_idx = (i - 1) * (grid.height - 2) * 4 + (j - 1) * 4 + dir
+                        observations[obs_idx] = obs
+                        assert obs_idx % 4 == dir
+                        assert (obs_idx // 4) % (grid.height - 2) == j - 1
+                        assert (obs_idx // (4 * (grid.height - 2))) == i - 1
+                        next_c = grid.get(*env.unwrapped.front_pos)
+                        if c is not None and c.type == 'lava':
+                            labels[obs_idx] = 'death'
+                        if c is None and next_c is not None and next_c.type == 'lava':
+                            labels[obs_idx] = 'unsafe'
+                        names[obs_idx] = f'{i}, {j}, {dir}'
 
 
-    observations = observations.transpose(0, 3, 1, 2)
-    observations = np.ascontiguousarray(observations)
-    embeddings = encoder(torch.Tensor(observations).to(device))
-    reconstruction = decoder(embeddings)
-    assert encoder.outputs['obs'].shape == reconstruction.shape
-    reconstruct_loss = torch.nn.functional.mse_loss(reconstruction, encoder.outputs['obs'])
+        observations = observations.transpose(0, 3, 1, 2)
+        observations = np.ascontiguousarray(observations)
+        embeddings = encoder(torch.Tensor(observations).to(device))
+        reconstruction = decoder(embeddings)
+        assert encoder.outputs['obs'].shape == reconstruction.shape
+        reconstruct_loss = torch.nn.functional.mse_loss(reconstruction, encoder.outputs['obs'])
 
-    print(f'Reconstruction loss: {reconstruct_loss.item()}')
-    X = embeddings.detach().cpu().numpy()
+        print(f'Reconstruction loss: {reconstruct_loss.item()}')
+        X = embeddings.detach().cpu().numpy()
 
-    tsne = TSNE(n_components=2, random_state=42)
-    X_tsne = tsne.fit_transform(X)
-    print(X_tsne.shape)
-    print(tsne.kl_divergence_)
-    df = pd.DataFrame(X_tsne, columns=['TSNE1', 'TSNE2'])
-    df['label'] = labels
-    df['name'] = names
-    print(df['label'].value_counts())
+        tsne = TSNE(n_components=2, random_state=42)
+        X_tsne = tsne.fit_transform(X)
+        print(X_tsne.shape)
+        print(tsne.kl_divergence_)
+        df = pd.DataFrame(X_tsne, columns=['TSNE1', 'TSNE2'])
+        df['label'] = labels
+        df['name'] = names
+        print(df['label'].value_counts())
+        dfs[env_id] = df
 
     if args.plotly:
         import plotly.express as px
@@ -221,8 +227,31 @@ if __name__ == '__main__':
         # Show plot in browser
         fig.show()
     else:
-        palette = {"safe": "C0", "unsafe": "C1", "death": "C2"}
-        ax = sns.scatterplot(data=df, x='TSNE1', y='TSNE2', hue='label', palette=palette)
-        plt.title('t-SNE visualization')
-        plt.savefig(f't-SNE_{args.env_id}_{args.seed}.png')
-        plt.show()
+        fig, axes = plt.subplots(1, len(dfs), figsize=(16, 4))
+        for i, (env_id, df) in enumerate(dfs.items()):
+            df = df[df.label != 'death']
+            palette = {"safe": "#4C72B0", "unsafe": "#DD8452", "death": "C2"}
+            ax = axes[i] if len(dfs) > 1 else axes
+            ax.set_axisbelow(True)
+            ax.grid(True)
+            ax.grid(color="#E5E7EB", linewidth=0.5)
+            sns.scatterplot(data=df, x='TSNE1', y='TSNE2', ax=ax, hue='label', palette=palette, s=60, legend='full' if i == len(dfs) - 1 else False)
+            if i == len(dfs) - 1:
+                # ax.legend(title=None, fontsize=16)
+                handles, labels = ax.get_legend_handles_labels()  # Get handles and labels from one of the plots
+                fig.legend(handles, labels, title=None, loc='center', fontsize=18, bbox_to_anchor=(0.5, -0.07), ncol=2)
+                ax.legend_.remove()
+
+            ax.spines['top'].set_edgecolor('#ccccd6')  # Red top spine
+            ax.spines['bottom'].set_edgecolor('#ccccd6')  # Green bottom spine
+            ax.spines['left'].set_edgecolor('#ccccd6')  # Blue left spine
+            ax.spines['right'].set_edgecolor('#ccccd6')  # Orange right spine
+            ax.set_xlabel('')
+            ax.set_ylabel('')
+            ax.tick_params(axis='both', which='major', labelsize=18)
+            ax.set_title(f'{env_id.split("-")[1]}', fontsize=18)
+        
+        fig.tight_layout(pad=0.5, w_pad=0.5, h_pad=0.5)
+        # fig.subplots_adjust(bottom=0.2)
+        fig.savefig(f't-SNE_{args.seed}.pdf', dpi=300, bbox_inches='tight')
+        # plt.show()
